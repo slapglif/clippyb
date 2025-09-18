@@ -69,31 +69,20 @@ impl YouTubeSearchTool {
     
     pub async fn search_multiple(&self, queries: Vec<String>) -> Result<Vec<SearchResult>, MusicDownloadError> {
         use futures::future::join_all;
-        use std::sync::Arc;
-        use tokio::sync::Semaphore;
         
-        // Limit concurrent searches to avoid overwhelming the system
-        let semaphore = Arc::new(Semaphore::new(3));
+        println!("🚀 Starting {} YouTube searches with maximum concurrency", queries.len());
+        
+        // Create tasks for all searches with NO rate limiting or delays
         let mut tasks = Vec::new();
-        
-        for (i, query) in queries.into_iter().enumerate() {
-            let sem = semaphore.clone();
+        for query in queries {
             let self_clone = self.clone();
-            
             let task = tokio::spawn(async move {
-                // Acquire permit for rate limiting
-                let _permit = sem.acquire().await.ok()?;
-                
-                // Add small delay between concurrent requests to be respectful
-                tokio::time::sleep(Duration::from_millis(100 * i as u64)).await;
-                
                 self_clone.search(&query).await.ok()
             });
-            
             tasks.push(task);
         }
         
-        // Wait for all searches to complete
+        // Wait for all searches to complete concurrently
         let results = join_all(tasks).await;
         
         // Collect all results
@@ -104,6 +93,8 @@ impl YouTubeSearchTool {
             }
         }
         
+        println!("📊 Collected {} total results from YouTube searches", all_results.len());
+        
         // Deduplicate results by video ID
         let mut seen_ids = std::collections::HashSet::new();
         let unique_results: Vec<SearchResult> = all_results
@@ -111,6 +102,7 @@ impl YouTubeSearchTool {
             .filter(|result| seen_ids.insert(result.id.clone()))
             .collect();
         
+        println!("✅ Returning {} unique results after deduplication", unique_results.len());
         Ok(unique_results)
     }
 }

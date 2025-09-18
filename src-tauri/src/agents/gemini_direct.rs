@@ -301,7 +301,7 @@ impl GeminiDirectCoordinator {
         println!("🔍 DEBUG: Result analysis - About to call Gemini with input: '{}'", input);
         
         let prompt = format!(
-            "{}\n\nYou are a music search result analyzer. Select the best match for the requested song.\n\nReturn ONLY valid JSON in exactly this format: {{\"query\": \"search query\", \"reasoning\": \"explanation\", \"selected_result_index\": 0, \"confidence\": 0.8}}. Use -1 for selected_result_index if no good match.",
+            "{}\n\nYou are a music search result analyzer. ALWAYS select the best available result from the list - never return -1.\n\nReturn ONLY valid JSON in exactly this format: {{\"query\": \"search query\", \"reasoning\": \"explanation\", \"selected_result_index\": 0, \"confidence\": 0.8}}. Pick the result that most closely matches the requested song, even if it's not perfect.",
             input
         );
         
@@ -321,6 +321,10 @@ impl GeminiDirectCoordinator {
         let selected = if analysis.selected_result_index >= 0 
             && (analysis.selected_result_index as usize) < results.len() {
             Some(results[analysis.selected_result_index as usize].clone())
+        } else if !results.is_empty() {
+            // Fallback: if Gemini returns -1 but we have results, pick the first one
+            println!("⚠️ Gemini returned -1 but we have {} results, picking first one", results.len());
+            Some(results[0].clone())
         } else {
             None
         };
