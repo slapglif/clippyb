@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::process::Command as TokioCommand;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
@@ -146,6 +146,9 @@ struct MusicDownloader {
     llm_provider: Arc<LLMProvider>,
     music_folder: Arc<PathBuf>,
     download_tx: mpsc::UnboundedSender<MusicItem>,
+    auto_download: Arc<RwLock<bool>>,
+    pending_downloads: Arc<Mutex<Vec<MusicItem>>>,
+    active_processes: Arc<Mutex<Vec<u32>>>, // Track active yt-dlp process IDs
 }
 
 impl MusicDownloader {
@@ -177,9 +180,50 @@ impl MusicDownloader {
             llm_provider: Arc::new(llm_provider),
             music_folder: Arc::new(music_folder),
             download_tx,
+            auto_download: Arc::new(RwLock::new(true)),
+            pending_downloads: Arc::new(Mutex::new(Vec::new())),
+            active_processes: Arc::new(Mutex::new(Vec::new())),
         };
         
         Ok((downloader, download_rx))
+    }
+    
+    /// Abort all active downloads by killing yt-dlp processes
+    fn abort_all_downloads(&self) {
+        println!("🛑 Aborting all active downloads...");
+        
+        let mut processes = self.active_processes.lock().unwrap();
+        let process_count = processes.len();
+        
+        if process_count == 0 {
+            self.show_notification("ℹ️ No Active Downloads", "No downloads to abort");
+            return;
+        }
+        
+        // Kill all active processes
+        for pid in processes.iter() {
+            #[cfg(windows)]
+            {
+                use std::process::Command;
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/PID", &pid.to_string()])
+                    .output();
+            }
+            #[cfg(not(windows))]
+            {
+                use std::process::Command;
+                let _ = Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .output();
+            }
+        }
+        
+        processes.clear();
+        self.show_notification(
+            "🛑 Downloads Aborted", 
+            &format!("Killed {} active download processes", process_count)
+        );
+        println!("🛑 Aborted {} download processes", process_count);
     }
     
     async fn create_spotify_client() -> Option<ClientCredsSpotify> {
@@ -262,7 +306,7 @@ impl MusicDownloader {
                 if !matches!(item_type, MusicItemType::Unknown) {
                     let item = MusicItem {
                         content: current.clone(),
-                        item_type,
+                        item_type: item_type.clone(),
                         timestamp: SystemTime::now(),
                         processed: false,
                     };
@@ -274,13 +318,32 @@ impl MusicDownloader {
                         history.pop();
                     }
                     
+                    // Handle notifications based on type
+                    match &item_type {
+                        MusicItemType::SongList(songs) => {
+                            // For song lists, show a single notification with count
+                            self.show_notification(
+                                "🎵 Music Playlist Detected!", 
+                                &format!("{} tracks found. Processing...", songs.len())
+                            );
+                        },
+                        _ => {
+                            // For single items, show specific notification
+                            let preview = match &item_type {
+                                MusicItemType::SongName(name) => name.chars().take(40).collect::<String>(),
+                                MusicItemType::SpotifyUrl(_) => "Spotify track".to_string(),
+                                MusicItemType::YoutubeUrl(_) => "YouTube video".to_string(),
+                                MusicItemType::SoundCloudUrl(_) => "SoundCloud track".to_string(),
+                                _ => "Music".to_string(),
+                            };
+                            self.show_notification("🎵 Music Detected!", &format!("Processing: {}", preview));
+                        }
+                    }
+                    
                     // Send for processing
                     if let Err(e) = self.download_tx.send(item) {
                         eprintln!("Failed to send item for processing: {}", e);
                     }
-                    
-                    // Show notification
-                    self.show_notification("🎵 Music Detected!", &format!("Processing: {}", current.chars().take(40).collect::<String>()));
                 }
                 
                 *last = current;
@@ -486,6 +549,12 @@ Answer: ",
             MusicItemType::SongList(songs) => {
                 println!("📜 Processing {} songs from list in parallel", songs.len());
                 
+                // Show initial progress notification
+                self.show_notification(
+                    "📥 Downloading Music Playlist",
+                    &format!("{} tracks queued for download", songs.len())
+                );
+                
                 // Process songs with limited concurrency
                 use futures::stream::{self, StreamExt};
                 use crate::utils::rate_limiter::RateLimiter;
@@ -494,6 +563,7 @@ Answer: ",
                 let rate_limiter = Arc::new(RateLimiter::new(5, 500));
                 let total = songs.len();
                 let songs_for_processing = songs.clone();
+                let start_time = std::time::Instant::now();
                 
                 let results: Vec<_> = stream::iter(songs_for_processing.into_iter().enumerate())
                     .map(move |(i, song)| {
@@ -506,10 +576,6 @@ Answer: ",
                             let _permit = limiter.acquire().await.ok()?;
                             
                             println!("🎵 Processing {}/{}: {}", index, total, song.chars().take(60).collect::<String>());
-                            self_clone.show_notification(
-                                &format!("📥 Downloading {}/{} files...", index, total),
-                                &format!("{}", song.chars().take(50).collect::<String>())
-                            );
                             
                             let result = if song.contains("spotify.com") {
                                 self_clone.process_spotify_url(&song).await
@@ -520,12 +586,7 @@ Answer: ",
                             };
                             
                             match &result {
-                                Ok(_) => {
-                                    println!("✅ Completed {}/{}", index, total);
-                                    if index == total {
-                                        self_clone.show_notification("✅ Downloads Complete!", &format!("Processed {} songs", total));
-                                    }
-                                },
+                                Ok(_) => println!("✅ Completed {}/{}", index, total),
                                 Err(e) => eprintln!("❌ Failed {}/{}: {}", index, total, e),
                             }
                             
@@ -539,8 +600,22 @@ Answer: ",
                 // Count successes/failures
                 let successes = results.iter().flatten().filter(|r| r.is_ok()).count();
                 let failures = results.iter().flatten().filter(|r| r.is_err()).count();
+                let duration = start_time.elapsed();
                 
                 println!("\n📊 Summary: {} succeeded, {} failed out of {} total", successes, failures, songs.len());
+                
+                // Show completion notification
+                if failures == 0 {
+                    self.show_notification(
+                        "✅ All Downloads Complete!",
+                        &format!("{} tracks downloaded successfully in {:?}", successes, duration)
+                    );
+                } else {
+                    self.show_notification(
+                        "⚠️ Downloads Finished",
+                        &format!("{} succeeded, {} failed out of {} tracks", successes, failures, total)
+                    );
+                }
             },
             MusicItemType::Unknown => {}
         }
@@ -851,50 +926,16 @@ Set index to -1 if no good match found.",
     async fn extract_song_info_from_spotify_url(&self, spotify_url: &str) -> Result<String, MusicDownloadError> {
         println!("🔍 Extracting metadata from Spotify URL: {}", spotify_url);
         
-        // Always use yt-dlp for Spotify URLs to avoid rate limiting
-        let output = TokioCommand::new("yt-dlp")
-            .arg("--dump-json")
-            .arg("--no-download")
-            .arg("--flat-playlist")
-            .arg(spotify_url)
-            .output()
-            .await
-            .map_err(|e| MusicDownloadError::Download(format!("Failed to run yt-dlp for Spotify: {}", e)))?;
-        
-        if !output.status.success() {
-            let error_msg = String::from_utf8_lossy(&output.stderr);
-            return Err(MusicDownloadError::Download(format!("yt-dlp failed on Spotify URL: {}", error_msg)));
-        }
-        
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        
-        // Parse yt-dlp JSON output
-        for line in output_str.lines() {
-            if line.trim().is_empty() {
-                continue;
+        // Don't try to download from Spotify directly - use API or web scraping instead
+        if let Some(track_id) = self.extract_spotify_track_id(spotify_url) {
+            // Try using Spotify API if available
+            if let Some(client) = &self.spotify_client {
+                if let Ok(track_info) = self.get_spotify_track_info_api(client, &track_id).await {
+                    return Ok(track_info);
+                }
             }
             
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                if let (Some(title), Some(artist)) = (
-                    json["track"].as_str().or_else(|| json["title"].as_str()),
-                    json["artist"].as_str().or_else(|| json["uploader"].as_str())
-                ) {
-                    let song_info = format!("{} - {}", artist, title);
-                    println!("✅ Extracted from yt-dlp: {}", song_info);
-                    return Ok(song_info);
-                }
-                
-                if let Some(full_title) = json["title"].as_str() {
-                    if full_title.contains(" - ") || full_title.contains(" by ") {
-                        println!("✅ Extracted from title: {}", full_title);
-                        return Ok(full_title.to_string());
-                    }
-                }
-            }
-        }
-        
-        // Final fallback to URL parsing/web scraping
-        if let Some(track_id) = self.extract_spotify_track_id(spotify_url) {
+            // Fallback to web scraping
             if let Ok(track_info) = self.get_spotify_track_info_web(&track_id).await {
                 return Ok(track_info);
             }
@@ -903,10 +944,56 @@ Set index to -1 if no good match found.",
         Err(MusicDownloadError::Download(format!("Could not extract song info from Spotify URL: {}", spotify_url)))
     }
     
+    async fn get_spotify_track_info_api(&self, client: &ClientCredsSpotify, track_id: &str) -> Result<String, MusicDownloadError> {
+        use rspotify::model::TrackId;
+        use rspotify::clients::BaseClient;
+        
+        let track_id = TrackId::from_id(track_id)
+            .map_err(|e| MusicDownloadError::Download(format!("Invalid Spotify track ID: {}", e)))?;
+        
+        let track = client.track(track_id, None).await
+            .map_err(|e| MusicDownloadError::Download(format!("Spotify API error: {}", e)))?;
+        
+        let artist = track.artists.get(0)
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| "Unknown Artist".to_string());
+        
+        let song_info = format!("{} - {}", artist, track.name);
+        println!("✅ Extracted from Spotify API: {}", song_info);
+        Ok(song_info)
+    }
+    
     async fn get_spotify_track_info_web(&self, track_id: &str) -> Result<String, MusicDownloadError> {
-        // Fallback web scraping method
-        // This could scrape the Spotify web page for track info
-        Err(MusicDownloadError::Download(format!("Web scraping not implemented for track: {}", track_id)))
+        // Fallback web scraping method using the public Spotify web page
+        let url = format!("https://open.spotify.com/track/{}", track_id);
+        
+        // Use reqwest to fetch the page and extract metadata from HTML
+        let response = reqwest::get(&url).await
+            .map_err(|e| MusicDownloadError::Download(format!("Failed to fetch Spotify page: {}", e)))?;
+        
+        let html = response.text().await
+            .map_err(|e| MusicDownloadError::Download(format!("Failed to read HTML: {}", e)))?;
+        
+        // Simple regex to extract title and artist from the HTML meta tags
+        if let Some(title_match) = html.find("\"name\":\"") {
+            let start = title_match + 9; // Length of "\"name\":\""
+            if let Some(end) = html[start..].find("\"") {
+                let title = &html[start..start + end];
+                
+                // Look for artist info nearby
+                if let Some(artist_start) = html[start..].find("\"artist\":{\"name\":\"") {
+                    let artist_start = start + artist_start + 18; // Length of "\"artist\":{\"name\":\""
+                    if let Some(artist_end) = html[artist_start..].find("\"") {
+                        let artist = &html[artist_start..artist_start + artist_end];
+                        let song_info = format!("{} - {}", artist, title);
+                        println!("✅ Extracted from Spotify web: {}", song_info);
+                        return Ok(song_info);
+                    }
+                }
+            }
+        }
+        
+        Err(MusicDownloadError::Download(format!("Could not extract track info from web page for: {}", track_id)))
     }
     
     async fn extract_song_info_from_soundcloud_url(&self, soundcloud_url: &str) -> Result<String, MusicDownloadError> {
@@ -1304,7 +1391,7 @@ Extract the artist and song title from the video title, removing any extra text 
         let output_path = self.music_folder.join(&safe_filename);
         
         // Download with yt-dlp
-        let output = TokioCommand::new("yt-dlp")
+        let child = TokioCommand::new("yt-dlp")
             .arg("--extract-audio")
             .arg("--audio-format")
             .arg("mp3")
@@ -1313,9 +1400,23 @@ Extract the artist and song title from the video title, removing any extra text 
             .arg("-o")
             .arg(output_path.to_string_lossy().as_ref())
             .arg(&metadata.youtube_url)
-            .output()
-            .await
+            .spawn()
             .map_err(|e| MusicDownloadError::Download(format!("Failed to run yt-dlp: {}", e)))?;
+        
+        // Track the process ID
+        let pid = child.id();
+        if let Some(pid) = pid {
+            self.active_processes.lock().unwrap().push(pid);
+        }
+        
+        let output = child.wait_with_output().await
+            .map_err(|e| MusicDownloadError::Download(format!("Failed to wait for yt-dlp: {}", e)))?;
+        
+        // Remove from active processes
+        if let Some(pid) = pid {
+            let mut processes = self.active_processes.lock().unwrap();
+            processes.retain(|&p| p != pid);
+        }
         
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
@@ -1439,12 +1540,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clear_history = MenuItem::new("Clear History", true, None);
     let open_folder = MenuItem::new("Open Music Folder", true, None);
     let config_menu = MenuItem::new("Configure LLM Provider", true, None);
+    let abort_downloads = MenuItem::new("🛑 Abort All Downloads", true, None);
     let separator = PredefinedMenuItem::separator();
     
     tray_menu.append_items(&[
         &show_history,
         &open_folder,
         &clear_history,
+        &separator,
+        &abort_downloads,
         &separator,
         &config_menu,
         &separator,
@@ -1493,6 +1597,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "Quit" => {
                             println!("👋 ClippyB shutting down...");
                             elwt.exit();
+                        }
+                        "🛑 Abort All Downloads" => {
+                            downloader_menu.abort_all_downloads();
                         }
                         "Show Download History" => {
                             let history = downloader_menu.get_history();
