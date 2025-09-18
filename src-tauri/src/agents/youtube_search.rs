@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde_json;
 use tokio::process::Command as TokioCommand;
 use crate::utils::smart_limiter::SmartLimiter;
+use crate::utils::retry::{retry_with_backoff, RetryConfig};
 
 use super::SearchResult;
 use crate::MusicDownloadError;
@@ -69,8 +70,8 @@ impl YouTubeSearchTool {
     pub async fn search_multiple(&self, queries: Vec<String>) -> Result<Vec<SearchResult>, MusicDownloadError> {
         use futures::future::join_all;
         
-        // Smart limiting for YouTube searches - use half your cores to be nice to YouTube
-        let search_limit = (num_cpus::get() / 2).max(2); // At least 2, max half your cores (11 for you)
+        // Conservative rate limiting for YouTube to prevent failures
+        let search_limit = 3; // Conservative: only 3 concurrent searches to avoid overwhelming yt-dlp
         let limiter = SmartLimiter::with_limit(search_limit);
         
         println!("🚀 Starting {} YouTube searches with {} concurrent limit", queries.len(), search_limit);
@@ -82,7 +83,15 @@ impl YouTubeSearchTool {
             let limiter_clone = limiter.clone();
             let task = tokio::spawn(async move {
                 let _permit = limiter_clone.acquire().await.ok()?;
-                self_clone.search(&query).await.ok()
+                
+                // Retry YouTube search with exponential backoff
+                let result = retry_with_backoff(
+                    || self_clone.search(&query),
+                    RetryConfig::youtube_search(),
+                    &format!("YouTube search: {}", query)
+                ).await;
+                
+                result.ok()
             });
             tasks.push(task);
         }

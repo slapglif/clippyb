@@ -27,10 +27,12 @@ use futures;
 mod agents;
 mod utils;
 mod download_queue;
+mod queue;
 
 use agents::{SearchResult as AgentSearchResult, SearchIteration as AgentSearchIteration};
 use download_queue::{DownloadQueue, DownloadTask};
 use utils::fuzzy_match::FuzzyMatcher;
+use queue::{PersistentQueue, QueueItem, QueueStatus, QueueProcessor};
 
 #[derive(Clone, Debug)]
 struct MusicItem {
