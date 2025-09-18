@@ -151,6 +151,7 @@ struct MusicDownloader {
     auto_download: Arc<RwLock<bool>>,
     pending_downloads: Arc<Mutex<Vec<MusicItem>>>,
     active_processes: Arc<Mutex<Vec<u32>>>, // Track active yt-dlp process IDs
+    persistent_queue: Arc<PersistentQueue>,
 }
 
 impl MusicDownloader {
@@ -174,6 +175,11 @@ impl MusicDownloader {
             println!("⚠️ Spotify API not available (set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET for better metadata)");
         }
         
+        // Initialize persistent queue
+        let queue_path = music_folder.join("clippyb_queue.json");
+        let persistent_queue = Arc::new(PersistentQueue::new(queue_path)
+            .map_err(|e| MusicDownloadError::LLM(format!("Failed to initialize queue: {}", e)))?);
+
         let downloader = Self {
             history: Arc::new(Mutex::new(Vec::new())),
             last_clipboard: Arc::new(Mutex::new(String::new())),
@@ -185,6 +191,7 @@ impl MusicDownloader {
             auto_download: Arc::new(RwLock::new(true)),
             pending_downloads: Arc::new(Mutex::new(Vec::new())),
             active_processes: Arc::new(Mutex::new(Vec::new())),
+            persistent_queue,
         };
         
         Ok((downloader, download_rx))
@@ -654,81 +661,54 @@ Answer: ",
                 self.process_soundcloud_url(&url).await?
             },
             MusicItemType::SongList(songs) => {
-                println!("📜 Processing {} songs from list in parallel", songs.len());
+                println!("📥 Queuing {} songs to persistent queue", songs.len());
                 
-                // Don't spam - already showed "Music Playlist Detected"
-                // self.show_notification(
-                //     "📥 Downloading Music Playlist",
-                //     &format!("{} tracks queued for download", songs.len())
-                // );
-                
-                // Process all songs with smart concurrency limits
-                use futures::future::join_all;
-                use crate::utils::smart_limiter::SmartLimiter;
-                
-                let total = songs.len();
-                let songs_for_processing = songs.clone();
-                let start_time = std::time::Instant::now();
-                
-                // Create smart limiter based on CPU cores (22 cores = 22 concurrent downloads)
-                let limiter = SmartLimiter::new();
-                
-                // Create tasks with smart concurrency control
-                let mut tasks = Vec::new();
-                for (i, song) in songs_for_processing.into_iter().enumerate() {
-                    let self_clone = self.clone();
-                    let limiter_clone = limiter.clone();
-                    let index = i + 1;
-                    
-                    let task = tokio::spawn(async move {
-                        // Smart rate limiting - only as many as you have CPU cores
-                        let _permit = limiter_clone.acquire().await.ok()?;
-                        println!("🎵 Processing {}/{}: {}", index, total, song.chars().take(60).collect::<String>());
-                        
-                        let result = if song.contains("spotify.com") {
-                            self_clone.process_spotify_url(&song).await
-                        } else if song.contains("soundcloud.com") {
-                            self_clone.process_soundcloud_url(&song).await
+                // Create queue items for all songs
+                let mut queue_items = Vec::new();
+                for (index, song) in songs.iter().enumerate() {
+                    let item_type = if song.contains("spotify.com") {
+                        if song.contains("/playlist/") {
+                            "spotify_playlist".to_string()
                         } else {
-                            self_clone.process_song_name(&song).await
-                        };
-                        
-                        match &result {
-                            Ok(_) => println!("✅ Completed {}/{}", index, total),
-                            Err(e) => {
-                                eprintln!("❌ Failed {}/{}: {}", index, total, e);
-                                eprintln!("   🎵 Song: {}", song.chars().take(50).collect::<String>());
-                                eprintln!("   📋 Error details: {}", e);
-                            },
+                            "spotify_track".to_string()
                         }
-                        
-                        Some(result)
-                    });
-                    tasks.push(task);
+                    } else if song.contains("soundcloud.com") {
+                        "soundcloud_track".to_string()
+                    } else if song.contains("youtube.com") || song.contains("youtu.be") {
+                        "youtube_url".to_string()
+                    } else {
+                        "song_name".to_string()
+                    };
+                    
+                    let queue_item = QueueItem::new(song.clone(), item_type)
+                        .with_metadata(queue::queue_item::QueueItemMetadata {
+                            title: None, // Will be populated during processing
+                            artist: None,
+                            playlist_name: Some(format!("Clipboard Batch {}", 
+                                SystemTime::now()
+                                    .duration_since(SystemTime::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs())),
+                            total_tracks: Some(songs.len()),
+                            track_index: Some(index + 1),
+                        });
+                    
+                    queue_items.push(queue_item);
                 }
                 
-                // Wait for ALL tasks to complete concurrently
-                let results = join_all(tasks).await;
-                
-                // Count successes/failures
-                let successes = results.iter().filter_map(|r| r.as_ref().ok()).flatten().filter(|r| r.is_ok()).count();
-                let failures = results.iter().filter_map(|r| r.as_ref().ok()).flatten().filter(|r| r.is_err()).count();
-                let duration = start_time.elapsed();
-                
-                println!("\n📊 Summary: {} succeeded, {} failed out of {} total", successes, failures, songs.len());
-                
-                // Show completion notification
-                if failures == 0 {
-                    self.show_notification(
-                        "✅ All Downloads Complete!",
-                        &format!("{} tracks downloaded successfully in {:?}", successes, duration)
-                    );
-                } else {
-                    self.show_notification(
-                        "⚠️ Downloads Finished",
-                        &format!("{} succeeded, {} failed out of {} tracks", successes, failures, total)
-                    );
+                // Add all items to persistent queue
+                if let Err(e) = self.persistent_queue.enqueue_multiple(queue_items).await {
+                    eprintln!("❌ Failed to queue songs: {}", e);
+                    return Err(MusicDownloadError::LLM(format!("Failed to queue songs: {}", e)));
                 }
+                
+                // Only log to console, no notification spam
+                println!("📥 {} tracks queued for background processing", songs.len());
+                
+                // Print queue status
+                let (pending, in_progress, completed, failed, skipped) = self.persistent_queue.get_status_counts().await;
+                println!("📊 Queue status: {} pending | {} in progress | {} completed | {} failed | {} skipped", 
+                        pending, in_progress, completed, failed, skipped);
             },
             MusicItemType::Unknown => {}
         }
@@ -1733,6 +1713,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let open_folder = MenuItem::with_id("open_folder", "Open Music Folder", true, None);
     let config_menu = MenuItem::with_id("config", "Configure LLM Provider", true, None);
     let abort_downloads = MenuItem::with_id("abort", "🛑 Abort All Downloads", true, None);
+    let queue_status = MenuItem::with_id("queue_status", "📊 Show Queue Status", true, None);
     let separator = PredefinedMenuItem::separator();
     
     tray_menu.append_items(&[
@@ -1740,6 +1721,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &open_folder,
         &clear_history,
         &separator,
+        &queue_status,
         &abort_downloads,
         &separator,
         &config_menu,
@@ -1762,6 +1744,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             thread::sleep(Duration::from_millis(100)); // Faster clipboard monitoring
         }
     });
+    
+    // Start queue processor for persistent queue
+    let queue_processor = queue::QueueProcessor::new(
+        downloader.persistent_queue.clone(), 
+        Arc::clone(&downloader)
+    );
+    tokio::spawn(async move {
+        queue_processor.start_processing().await;
+    });
+    println!("🚀 Queue processor started for background processing");
     
     // Start download processing task
     let downloader_processor = Arc::clone(&downloader);
@@ -1793,6 +1785,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         "abort" => {
                             downloader_menu.abort_all_downloads();
+                        }
+                        "queue_status" => {
+                            let rt = tokio::runtime::Handle::current();
+                            let downloader_clone = Arc::clone(&downloader_menu);
+                            rt.spawn(async move {
+                                let (pending, in_progress, completed, failed, skipped) = 
+                                    downloader_clone.persistent_queue.get_status_counts().await;
+                                let total = pending + in_progress + completed + failed + skipped;
+                                
+                                let status_msg = if total == 0 {
+                                    "📭 Queue is empty".to_string()
+                                } else {
+                                    format!(
+                                        "📊 Queue Status: {} total | {} pending | {} in progress | {} completed | {} failed | {} skipped",
+                                        total, pending, in_progress, completed, failed, skipped
+                                    )
+                                };
+                                
+                                println!("\n{}", "=".repeat(80));
+                                println!("{}", status_msg);
+                                println!("{}", "=".repeat(80));
+                                
+                                downloader_clone.show_notification("📊 Queue Status", &status_msg);
+                            });
                         }
                         "show_history" => {
                             let history = downloader_menu.get_history();
