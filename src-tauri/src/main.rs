@@ -618,7 +618,11 @@ Answer: ",
                             
                             match &result {
                                 Ok(_) => println!("✅ Completed {}/{}", index, total),
-                                Err(e) => eprintln!("❌ Failed {}/{}: {}", index, total, e),
+                                Err(e) => {
+                                    eprintln!("❌ Failed {}/{}: {}", index, total, e);
+                                    eprintln!("   🎵 Song: {}", song.chars().take(50).collect::<String>());
+                                    eprintln!("   📋 Error details: {}", e);
+                                },
                             }
                             
                             Some(result)
@@ -1567,12 +1571,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Create system tray menu
     let tray_menu = Menu::new();
-    let quit_item = MenuItem::new("Quit", true, None);
-    let show_history = MenuItem::new("Show Download History", true, None);
-    let clear_history = MenuItem::new("Clear History", true, None);
-    let open_folder = MenuItem::new("Open Music Folder", true, None);
-    let config_menu = MenuItem::new("Configure LLM Provider", true, None);
-    let abort_downloads = MenuItem::new("🛑 Abort All Downloads", true, None);
+    let quit_item = MenuItem::with_id("quit", "Quit", true, None);
+    let show_history = MenuItem::with_id("show_history", "Show Download History", true, None);
+    let clear_history = MenuItem::with_id("clear_history", "Clear History", true, None);
+    let open_folder = MenuItem::with_id("open_folder", "Open Music Folder", true, None);
+    let config_menu = MenuItem::with_id("config", "Configure LLM Provider", true, None);
+    let abort_downloads = MenuItem::with_id("abort", "🛑 Abort All Downloads", true, None);
     let separator = PredefinedMenuItem::separator();
     
     tray_menu.append_items(&[
@@ -1627,14 +1631,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(event) = menu_channel.try_recv() {
                     println!("🖱️ Menu event received: '{}'", event.id.0);
                     match event.id.0.as_str() {
-                        "Quit" => {
+                        "quit" => {
                             println!("👋 ClippyB shutting down...");
                             elwt.exit();
                         }
-                        "🛑 Abort All Downloads" => {
+                        "abort" => {
                             downloader_menu.abort_all_downloads();
                         }
-                        "Show Download History" => {
+                        "show_history" => {
                             let history = downloader_menu.get_history();
                             println!("\n🎧 Music Download History:");
                             println!("=========================================\n");
@@ -1658,16 +1662,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             println!("\n=========================================\n");
                         }
-                        "Clear History" => {
+                        "clear_history" => {
                             downloader_menu.history.lock().unwrap().clear();
                             println!("🗑️ Music download history cleared");
                         }
-                        "Open Music Folder" => {
+                        "open_folder" => {
                             let _ = Command::new("explorer")
                                 .arg(downloader_menu.music_folder.to_string_lossy().as_ref())
                                 .spawn();
                         }
-                        "Configure LLM Provider" => {
+                        "config" => {
                             let config_path = dirs::config_dir()
                                 .map(|p| p.join("clippyb").join("config.json"))
                                 .unwrap_or_else(|| PathBuf::from("clippyb_config.json"));

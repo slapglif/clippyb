@@ -54,7 +54,7 @@ impl RigQueryGenerator {
         
         // The extractor will handle prompting and structured extraction
         let result = self.extractor.extract(&input_text).await
-            .map_err(|e| MusicDownloadError::LLM(format!("Failed to extract queries: {}", e)))?;
+            .map_err(|e| MusicDownloadError::LLM(format!("Query extractor error: {} | Input: '{}'", e, input_text.chars().take(200).collect::<String>())))?;
         
         Ok(result.queries)
     }
@@ -118,7 +118,7 @@ If no good match found, explain why and set selected_result_index to -1."#,
         
         // Use the extractor to get structured data
         self.extractor.extract(&prompt).await
-            .map_err(|e| MusicDownloadError::LLM(format!("Failed to extract analysis: {}", e)))
+            .map_err(|e| MusicDownloadError::LLM(format!("Analysis extractor error: {} | Query: '{}' | {} results", e, original_query, results.len())))
     }
 }
 
