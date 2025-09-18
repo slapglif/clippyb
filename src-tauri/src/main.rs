@@ -325,17 +325,12 @@ impl MusicDownloader {
                         history.pop();
                     }
                     
-                    // Handle notifications based on type
+                    // Log to console only, no notifications for detection
                     match &item_type {
                         MusicItemType::SongList(songs) => {
-                            // For song lists, show a single notification with count
-                            self.show_notification(
-                                "🎵 Music Playlist Detected!", 
-                                &format!("{} tracks found. Processing...", songs.len())
-                            );
+                            println!("🎵 Music playlist detected: {} tracks", songs.len());
                         },
                         _ => {
-                            // For single items, show specific notification
                             let preview = match &item_type {
                                 MusicItemType::SongName(name) => name.chars().take(40).collect::<String>(),
                                 MusicItemType::SpotifyUrl(_) => "Spotify track".to_string(),
@@ -343,7 +338,7 @@ impl MusicDownloader {
                                 MusicItemType::SoundCloudUrl(_) => "SoundCloud track".to_string(),
                                 _ => "Music".to_string(),
                             };
-                            self.show_notification("🎵 Music Detected!", &format!("Processing: {}", preview));
+                            println!("🎵 Music detected: {}", preview);
                         }
                     }
                     
