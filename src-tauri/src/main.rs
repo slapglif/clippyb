@@ -660,20 +660,27 @@ Answer: ",
                 //     &format!("{} tracks queued for download", songs.len())
                 // );
                 
-                // Process all songs with maximum concurrency
+                // Process all songs with smart concurrency limits
                 use futures::future::join_all;
+                use crate::utils::smart_limiter::SmartLimiter;
                 
                 let total = songs.len();
                 let songs_for_processing = songs.clone();
                 let start_time = std::time::Instant::now();
                 
-                // Create tasks for ALL songs with NO rate limiting
+                // Create smart limiter based on CPU cores (22 cores = 22 concurrent downloads)
+                let limiter = SmartLimiter::new();
+                
+                // Create tasks with smart concurrency control
                 let mut tasks = Vec::new();
                 for (i, song) in songs_for_processing.into_iter().enumerate() {
                     let self_clone = self.clone();
+                    let limiter_clone = limiter.clone();
                     let index = i + 1;
                     
                     let task = tokio::spawn(async move {
+                        // Smart rate limiting - only as many as you have CPU cores
+                        let _permit = limiter_clone.acquire().await.ok()?;
                         println!("🎵 Processing {}/{}: {}", index, total, song.chars().take(60).collect::<String>());
                         
                         let result = if song.contains("spotify.com") {
@@ -693,7 +700,7 @@ Answer: ",
                             },
                         }
                         
-                        result
+                        Some(result)
                     });
                     tasks.push(task);
                 }
@@ -702,8 +709,8 @@ Answer: ",
                 let results = join_all(tasks).await;
                 
                 // Count successes/failures
-                let successes = results.iter().filter_map(|r| r.as_ref().ok()).filter(|r| r.is_ok()).count();
-                let failures = results.iter().filter_map(|r| r.as_ref().ok()).filter(|r| r.is_err()).count();
+                let successes = results.iter().filter_map(|r| r.as_ref().ok()).flatten().filter(|r| r.is_ok()).count();
+                let failures = results.iter().filter_map(|r| r.as_ref().ok()).flatten().filter(|r| r.is_err()).count();
                 let duration = start_time.elapsed();
                 
                 println!("\n📊 Summary: {} succeeded, {} failed out of {} total", successes, failures, songs.len());

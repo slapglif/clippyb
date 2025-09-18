@@ -630,6 +630,7 @@ dependencies = [
  "image",
  "mp3-metadata",
  "notify-rust",
+ "num_cpus",
  "regex",
  "reqwest",
  "rig-core",

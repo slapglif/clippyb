@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json;
 use tokio::process::Command as TokioCommand;
+use crate::utils::smart_limiter::SmartLimiter;
 
 use super::SearchResult;
 use crate::MusicDownloadError;
@@ -68,13 +69,19 @@ impl YouTubeSearchTool {
     pub async fn search_multiple(&self, queries: Vec<String>) -> Result<Vec<SearchResult>, MusicDownloadError> {
         use futures::future::join_all;
         
-        println!("🚀 Starting {} YouTube searches with maximum concurrency", queries.len());
+        // Smart limiting for YouTube searches - use half your cores to be nice to YouTube
+        let search_limit = (num_cpus::get() / 2).max(2); // At least 2, max half your cores (11 for you)
+        let limiter = SmartLimiter::with_limit(search_limit);
         
-        // Create tasks for all searches with NO rate limiting or delays
+        println!("🚀 Starting {} YouTube searches with {} concurrent limit", queries.len(), search_limit);
+        
+        // Create tasks with smart rate limiting
         let mut tasks = Vec::new();
         for query in queries {
             let self_clone = self.clone();
+            let limiter_clone = limiter.clone();
             let task = tokio::spawn(async move {
+                let _permit = limiter_clone.acquire().await.ok()?;
                 self_clone.search(&query).await.ok()
             });
             tasks.push(task);
