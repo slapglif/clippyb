@@ -1,0 +1,10 @@
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\avif_serialize-df4f60ba0449de63.d: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\boxes.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\constants.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\writer.rs
+
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\libavif_serialize-df4f60ba0449de63.rlib: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\boxes.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\constants.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\writer.rs
+
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\libavif_serialize-df4f60ba0449de63.rmeta: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\boxes.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\constants.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\writer.rs
+
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\lib.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\boxes.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\constants.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\avif-serialize-0.8.6\src\writer.rs:

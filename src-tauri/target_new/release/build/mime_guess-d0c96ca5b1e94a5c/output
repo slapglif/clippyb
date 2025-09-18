@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\build\mime_guess-d0c96ca5b1e94a5c\out\mime_types_generated.rs

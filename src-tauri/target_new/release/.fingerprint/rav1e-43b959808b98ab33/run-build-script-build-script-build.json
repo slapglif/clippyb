@@ -1,0 +1,1 @@
+{"rustc":3926191382657067107,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[5626665093607998638,"build_script_build",false,13586253345540218625]],"local":[{"Precalculated":"0.7.1"}],"rustflags":["-C","link-arg=-static-libgcc","-C","link-arg=-static-libstdc++","-C","target-cpu=native"],"config":0,"compile_kind":0}

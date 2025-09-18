@@ -196,7 +196,7 @@ impl MusicDownloader {
         let process_count = processes.len();
         
         if process_count == 0 {
-            self.show_notification("ℹ️ No Active Downloads", "No downloads to abort");
+            // Don't spam - self.show_notification("ℹ️ No Active Downloads", "No downloads to abort");
             return;
         }
         
@@ -219,10 +219,10 @@ impl MusicDownloader {
         }
         
         processes.clear();
-        self.show_notification(
-            "🛑 Downloads Aborted", 
-            &format!("Killed {} active download processes", process_count)
-        );
+        // Don't spam - self.show_notification(
+        //     "🛑 Downloads Aborted", 
+        //     &format!("Killed {} active download processes", process_count)
+        // );
         println!("🛑 Aborted {} download processes", process_count);
     }
     
@@ -654,11 +654,11 @@ Answer: ",
             MusicItemType::SongList(songs) => {
                 println!("📜 Processing {} songs from list in parallel", songs.len());
                 
-                // Show initial progress notification
-                self.show_notification(
-                    "📥 Downloading Music Playlist",
-                    &format!("{} tracks queued for download", songs.len())
-                );
+                // Don't spam - already showed "Music Playlist Detected"
+                // self.show_notification(
+                //     "📥 Downloading Music Playlist",
+                //     &format!("{} tracks queued for download", songs.len())
+                // );
                 
                 // Process songs with limited concurrency
                 use futures::stream::{self, StreamExt};
@@ -1495,12 +1495,14 @@ Extract the artist and song title from the video title, removing any extra text 
         // Check if song already exists
         if FuzzyMatcher::song_exists(&metadata.artist, &metadata.title, &self.music_folder) {
             println!("✅ Song already downloaded: {} - {}", metadata.artist, metadata.title);
-            self.show_notification("✅ Already downloaded", &format!("{} - {}", metadata.artist, metadata.title));
+            // Don't notify for already downloaded
+            // self.show_notification("✅ Already downloaded", &format!("{} - {}", metadata.artist, metadata.title));
             return Ok(());
         }
         
         println!("💾 Downloading: {} - {}", metadata.artist, metadata.title);
-        self.show_notification("💾 Downloading...", &format!("{} - {}", metadata.artist, metadata.title));
+        // Don't notify for downloading start - we already showed "Music Detected"
+        // self.show_notification("💾 Downloading...", &format!("{} - {}", metadata.artist, metadata.title));
         
         // Check if yt-dlp is available
         if !self.check_ytdlp_available() {

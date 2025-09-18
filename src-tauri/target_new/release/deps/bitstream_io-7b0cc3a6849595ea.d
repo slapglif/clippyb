@@ -1,0 +1,10 @@
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\bitstream_io-7b0cc3a6849595ea.d: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\huffman.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\read.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\write.rs
+
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\libbitstream_io-7b0cc3a6849595ea.rlib: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\huffman.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\read.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\write.rs
+
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\libbitstream_io-7b0cc3a6849595ea.rmeta: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\huffman.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\read.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\write.rs
+
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\lib.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\huffman.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\read.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bitstream-io-2.6.0\src\write.rs:

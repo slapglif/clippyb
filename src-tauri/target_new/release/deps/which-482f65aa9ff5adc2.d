@@ -1,0 +1,11 @@
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\which-482f65aa9ff5adc2.d: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\checker.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\error.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\finder.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\helper.rs
+
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\libwhich-482f65aa9ff5adc2.rlib: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\checker.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\error.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\finder.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\helper.rs
+
+C:\Users\MichaelBrown\work\clippyb\src-tauri\target_new\release\deps\libwhich-482f65aa9ff5adc2.rmeta: C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\lib.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\checker.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\error.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\finder.rs C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\helper.rs
+
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\lib.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\checker.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\error.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\finder.rs:
+C:\Users\MichaelBrown\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\which-7.0.3\src\helper.rs:

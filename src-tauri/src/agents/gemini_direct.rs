@@ -2,6 +2,7 @@
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 use schemars::JsonSchema;
+use futures::future;
 
 use super::{
     SearchContext, SearchIteration, SearchResult, YouTubeSearchTool,
@@ -137,85 +138,89 @@ impl GeminiDirectCoordinator {
     }
     
     pub async fn search_for_song(&self, song_query: &str) -> Result<SearchResult, MusicDownloadError> {
-        let mut context = SearchContext {
-            original_query: song_query.to_string(),
-            iterations: Vec::new(),
-            max_iterations: self.max_iterations,
-        };
+        println!("🚀 Starting concurrent multi-approach search for: {}", song_query);
         
-        for iteration in 0..self.max_iterations {
-            println!("🤔 Iteration {}/{}", iteration + 1, self.max_iterations);
-            
-            // Generate queries using Gemini
-            let query_iteration = self.generate_queries(&context).await?;
-            let queries: Vec<String> = query_iteration.query
-                .split(" | ")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            
-            if queries.is_empty() {
-                return Err(MusicDownloadError::LLM("No queries generated".to_string()));
+        // Generate multiple search approaches concurrently with Gemini
+        let approaches = vec![
+            ("exact", format!("Find this exact song on YouTube: {}", song_query)),
+            ("variations", format!("Generate alternative search queries for this song, including common variations: {}", song_query)),
+            ("metadata", format!("Extract artist and song name, then generate YouTube search queries with different formats: {}", song_query)),
+        ];
+        
+        // Run all approaches concurrently
+        let approach_futures: Vec<_> = approaches.into_iter().map(|(name, prompt)| {
+            let approach_name = name.to_string();
+            async move {
+                println!("🔍 Running {} approach", approach_name);
+                let response = self.call_gemini_api(&format!(
+                    "{}. Return ONLY valid JSON: {{\"queries\": [\"query1\", \"query2\", \"query3\"]}}",
+                    prompt
+                )).await?;
+                
+                // Parse queries
+                let json_start = response.find('{').unwrap_or(0);
+                let json_end = response.rfind('}').map(|i| i + 1).unwrap_or(response.len());
+                let json_str = &response[json_start..json_end];
+                
+                let query_list: QueryList = serde_json::from_str(json_str)
+                    .map_err(|e| MusicDownloadError::LLM(format!("Failed to parse {} queries: {}", approach_name, e)))?;
+                
+                println!("✅ {} approach generated {} queries", approach_name, query_list.queries.len());
+                Ok::<(String, Vec<String>), MusicDownloadError>((approach_name, query_list.queries))
             }
-            
-            // Execute searches
-            println!("🔍 Searching with {} queries", queries.len());
-            let search_results = self.youtube_tool.search_multiple(queries.clone()).await?;
-            
-            if search_results.is_empty() {
-                context.iterations.push(SearchIteration {
-                    query: queries.join(", "),
-                    results: Vec::new(),
-                    reasoning: "No results found".to_string(),
-                    selected_result: None,
-                    confidence: 0.0,
-                });
-                continue;
-            }
-            
-            // Update context
-            context.iterations.push(SearchIteration {
-                query: queries.join(", "),
-                results: search_results.clone(),
-                reasoning: String::new(),
-                selected_result: None,
-                confidence: 0.0,
-            });
-            
-            // Analyze results using Gemini
-            let analysis = self.analyze_results(&context.original_query, &search_results).await?;
-            
-            println!("📝 Reasoning: {}", analysis.reasoning);
-            println!("🎯 Confidence: {:.1}%", analysis.confidence * 100.0);
-            
-            // Update iteration with analysis
-            if let Some(last) = context.iterations.last_mut() {
-                last.reasoning = analysis.reasoning.clone();
-                last.selected_result = analysis.selected_result.clone();
-                last.confidence = analysis.confidence;
-            }
-            
-            // Return if confident
-            if let Some(result) = &analysis.selected_result {
-                if analysis.confidence > 0.5 || iteration == self.max_iterations - 1 {
-                    println!("✅ Selected: {} by {}", result.title, result.uploader);
-                    return Ok(result.clone());
+        }).collect();
+        
+        // Execute all approaches in parallel and collect results
+        let approach_results = future::join_all(approach_futures).await;
+        
+        // Flatten all queries from all successful approaches
+        let mut all_queries = Vec::new();
+        for result in approach_results {
+            match result {
+                Ok((approach, queries)) => {
+                    println!("📋 Adding {} queries from {} approach", queries.len(), approach);
+                    all_queries.extend(queries);
+                },
+                Err(e) => {
+                    println!("⚠️ Approach failed: {}", e);
+                    // Continue with other approaches
                 }
             }
         }
         
-        // Return best result
-        context.iterations
-            .iter()
-            .filter_map(|iter| {
-                iter.selected_result.as_ref()
-                    .map(|result| (result.clone(), iter.confidence))
-            })
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .map(|(result, _)| result)
-            .ok_or_else(|| MusicDownloadError::Download(
-                format!("No suitable match found for: {}", song_query)
-            ))
+        if all_queries.is_empty() {
+            return Err(MusicDownloadError::LLM("All query generation approaches failed".to_string()));
+        }
+        
+        // Remove duplicates and limit to reasonable number
+        all_queries.dedup();
+        if all_queries.len() > 10 {
+            all_queries.truncate(10);
+        }
+        
+        println!("🔍 Executing {} total search queries concurrently", all_queries.len());
+        
+        // Execute all searches concurrently (maximum parallelism)
+        let search_results = self.youtube_tool.search_multiple(all_queries.clone()).await?;
+        
+        if search_results.is_empty() {
+            return Err(MusicDownloadError::Download("No search results found".to_string()));
+        }
+        
+        println!("📊 Found {} total results, analyzing concurrently", search_results.len());
+        
+        // Analyze results with Gemini
+        let analysis = self.analyze_results(song_query, &search_results).await?;
+        
+        println!("📝 Analysis: {}", analysis.reasoning);
+        println!("🎯 Confidence: {:.1}%", analysis.confidence * 100.0);
+        
+        if let Some(result) = analysis.selected_result {
+            println!("✅ Selected: {} by {}", result.title, result.uploader);
+            Ok(result)
+        } else {
+            Err(MusicDownloadError::Download(format!("No suitable match found for: {}", song_query)))
+        }
     }
     
     async fn generate_queries(&self, context: &SearchContext) -> Result<SearchIteration, MusicDownloadError> {
