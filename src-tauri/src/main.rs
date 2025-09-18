@@ -777,8 +777,7 @@ Answer: ",
         // Early duplicate check - parse artist and title from song_info
         if let Some((artist, title)) = self.parse_artist_title(&song_info) {
             if FuzzyMatcher::song_exists(&artist, &title, &self.music_folder) {
-                println!("✅ Song already exists, skipping expensive search: {} - {}", artist, title);
-                // Create dummy metadata to indicate already exists - this will be caught in process_spotify_url
+                println!("✅ Song already exists, skipping: {} - {}", artist, title);
                 return Ok(SongMetadata {
                     artist: artist,
                     title: title,

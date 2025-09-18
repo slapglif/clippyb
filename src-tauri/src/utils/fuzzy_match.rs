@@ -16,7 +16,7 @@ impl FuzzyMatcher {
             .join(" ")
     }
     
-    /// Check if a song already exists in the directory
+    /// Check if a song already exists in the directory  
     pub fn song_exists(artist: &str, title: &str, music_dir: &Path) -> bool {
         let normalized_artist = Self::normalize(artist);
         let normalized_title = Self::normalize(title);
@@ -27,18 +27,11 @@ impl FuzzyMatcher {
                     if filename.ends_with(".mp3") || filename.ends_with(".m4a") {
                         let normalized_filename = Self::normalize(filename);
                         
-                        // Check if filename contains both artist and title
-                        if normalized_filename.contains(&normalized_artist) && 
-                           normalized_filename.contains(&normalized_title) {
-                            return true;
-                        }
-                        
-                        // Also check reverse order (title - artist)
-                        let combined1 = format!("{} {}", normalized_artist, normalized_title);
-                        let combined2 = format!("{} {}", normalized_title, normalized_artist);
-                        
-                        if normalized_filename.contains(&combined1) || 
-                           normalized_filename.contains(&combined2) {
+                        // More aggressive matching - check for partial matches too
+                        if (normalized_filename.contains(&normalized_artist) && 
+                            normalized_filename.contains(&normalized_title)) ||
+                           (normalized_artist.len() > 3 && normalized_filename.contains(&normalized_artist)) ||
+                           (normalized_title.len() > 3 && normalized_filename.contains(&normalized_title)) {
                             return true;
                         }
                     }
