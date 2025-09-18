@@ -44,54 +44,80 @@ impl QueueProcessor {
     }
     
     pub async fn start_processing(&self) {
-        println!("🚀 Queue processor started");
+        println!("🚀 Fully async queue processor started");
         
         loop {
-            // Get next pending item
-            if let Some(mut item) = self.queue.peek_pending().await {
-                // Acquire permit for concurrency control
-                let _permit = self.limiter.acquire().await;
+            // Get ALL pending items
+            let pending_items = self.queue.get_pending_items().await;
+            
+            if !pending_items.is_empty() {
+                println!("🚀 Starting {} async tasks for parallel processing", pending_items.len());
                 
-                // Remove from queue and start processing
-                item.start_processing();
-                if let Err(e) = self.queue.update_item(item.clone()).await {
-                    eprintln!("❌ Failed to update item status: {}", e);
-                    continue;
-                }
-                
-                // Send progress update
-                self.send_progress_update(Some(item.clone())).await;
-                
-                println!("🎵 Processing: {}", item.display_name());
-                
-                // Process the item
-                let result = self.process_item(&item).await;
-                
-                // Update item based on result
-                match result {
-                    Ok(()) => {
-                        item.complete();
-                        println!("✅ Completed: {}", item.display_name());
-                    }
-                    Err(e) => {
-                        let error_msg = e.to_string();
-                        if error_msg.contains("already exists") || error_msg.contains("duplicate") {
-                            item.skip(format!("Duplicate: {}", error_msg));
-                            println!("⏭️ Skipped (duplicate): {}", item.display_name());
-                        } else {
-                            item.fail(error_msg);
-                            println!("❌ Failed: {} - {}", item.display_name(), e);
+                // Spawn async task for each pending item
+                for mut item in pending_items {
+                    // Clone necessary components for the task
+                    let queue_clone = self.queue.clone();
+                    let downloader_clone = self.downloader.clone();
+                    let limiter_clone = self.limiter.clone();
+                    let progress_tx_clone = self.progress_tx.clone();
+                    
+                    let task = tokio::spawn(async move {
+                        // Acquire permit for concurrency control
+                        let _permit = limiter_clone.acquire().await;
+                        
+                        // Mark as in progress
+                        item.start_processing();
+                        if let Err(e) = queue_clone.update_item(item.clone()).await {
+                            eprintln!("❌ Failed to update item status: {}", e);
+                            return;
                         }
-                    }
+                        
+                        println!("🎵 [ASYNC] Processing: {}", item.display_name());
+                        
+                        // Process the item
+                        let result = Self::process_item_async(&downloader_clone, &item).await;
+                        
+                        // Update item based on result
+                        match result {
+                            Ok(()) => {
+                                item.complete();
+                                println!("✅ [ASYNC] Completed: {}", item.display_name());
+                            }
+                            Err(e) => {
+                                let error_msg = e.to_string();
+                                if error_msg.contains("already exists") || error_msg.contains("duplicate") {
+                                    item.skip(format!("Duplicate: {}", error_msg));
+                                    println!("⏭️ [ASYNC] Skipped (duplicate): {}", item.display_name());
+                                } else {
+                                    item.fail(error_msg);
+                                    println!("❌ [ASYNC] Failed: {} - {}", item.display_name(), e);
+                                }
+                            }
+                        }
+                        
+                        // Save updated item
+                        if let Err(e) = queue_clone.update_item(item).await {
+                            eprintln!("❌ Failed to update item after processing: {}", e);
+                        }
+                        
+                        // Send progress update
+                        if let Some(tx) = &progress_tx_clone {
+                            let (pending, in_progress, completed, failed, skipped) = queue_clone.get_status_counts().await;
+                            let progress = QueueProgress {
+                                current_item: None,
+                                pending_count: pending,
+                                completed_count: completed + skipped,
+                                failed_count: failed,
+                                total_processed: completed + failed + skipped,
+                            };
+                            let _ = tx.send(progress);
+                        }
+                    });
                 }
                 
-                // Save updated item
-                if let Err(e) = self.queue.update_item(item).await {
-                    eprintln!("❌ Failed to update item after processing: {}", e);
-                }
-                
-                // Send final progress update
-                self.send_progress_update(None).await;
+                // Don't wait for all tasks to complete - let them run in background
+                // Wait longer before checking for new items to avoid re-spawning same items
+                sleep(Duration::from_millis(5000)).await;
             } else {
                 // No pending items, sleep and check again
                 sleep(Duration::from_millis(1000)).await;
@@ -102,27 +128,28 @@ impl QueueProcessor {
         }
     }
     
-    async fn process_item(&self, item: &QueueItem) -> Result<()> {
+    // Static method for async processing
+    async fn process_item_async(downloader: &Arc<MusicDownloader>, item: &QueueItem) -> Result<()> {
         match item.item_type.as_str() {
             "spotify_playlist" => {
-                self.downloader.process_spotify_url(&item.url).await
+                downloader.process_spotify_url(&item.url).await
                     .map_err(|e| anyhow::anyhow!("{}", e))
             }
             "spotify_track" => {
-                self.downloader.process_spotify_url(&item.url).await
+                downloader.process_spotify_url(&item.url).await
                     .map_err(|e| anyhow::anyhow!("{}", e))
             }
             "soundcloud_track" => {
-                self.downloader.process_soundcloud_url(&item.url).await
+                downloader.process_soundcloud_url(&item.url).await
                     .map_err(|e| anyhow::anyhow!("{}", e))
             }
             "youtube_url" => {
                 // For now, treat YouTube URLs as song names
-                self.downloader.process_song_name(&item.url).await
+                downloader.process_song_name(&item.url).await
                     .map_err(|e| anyhow::anyhow!("{}", e))
             }
             "song_name" => {
-                self.downloader.process_song_name(&item.url).await
+                downloader.process_song_name(&item.url).await
                     .map_err(|e| anyhow::anyhow!("{}", e))
             }
             _ => {
@@ -130,6 +157,7 @@ impl QueueProcessor {
             }
         }
     }
+    
     
     async fn send_progress_update(&self, current_item: Option<QueueItem>) {
         if let Some(tx) = &self.progress_tx {

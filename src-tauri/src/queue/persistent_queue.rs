@@ -116,6 +116,14 @@ impl PersistentQueue {
         self.items.read().await.clone().into()
     }
     
+    pub async fn get_pending_items(&self) -> Vec<QueueItem> {
+        self.items.read().await
+            .iter()
+            .filter(|item| matches!(item.status, QueueStatus::Pending))
+            .cloned()
+            .collect()
+    }
+    
     pub async fn clear_completed(&self) -> Result<usize> {
         let removed_count = {
             let mut items = self.items.write().await;
