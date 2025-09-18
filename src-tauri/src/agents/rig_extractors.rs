@@ -65,9 +65,17 @@ impl MusicSearchAgent for QueryExtractor {
             format!("Find this song on YouTube: {}", context.original_query)
         };
         
+        // Create extractor with explicit JSON schema format for Ollama structured output
+        use schemars::schema_for;
+        let schema = schema_for!(QueryList);
+        let format_param = serde_json::json!({
+            "format": serde_json::to_string(&schema).unwrap()
+        });
+        
         let extractor = self.client
             .extractor::<QueryList>(&self.model_name)
-            .preamble("You are a music search expert. Generate effective YouTube search queries.")
+            .preamble("You are a music search expert. Generate effective YouTube search queries for the given song. Return a JSON object with a 'queries' array containing 2-3 search query strings.")
+            .additional_params(format_param)
             .build();
             
         let result = extractor
@@ -125,9 +133,17 @@ impl ResultExtractor {
             original_query, results_text
         );
         
+        // Create extractor with explicit JSON schema format for Ollama structured output  
+        use schemars::schema_for;
+        let schema = schema_for!(ResultAnalysis);
+        let format_param = serde_json::json!({
+            "format": serde_json::to_string(&schema).unwrap()
+        });
+        
         let extractor = self.client
             .extractor::<ResultAnalysis>(&self.model_name)
-            .preamble("You are a music search result analyzer. Select the best match for the requested song.")
+            .preamble("You are a music search result analyzer. Select the best match for the requested song. Return a JSON object with query, reasoning, selected_result_index (number), and confidence (0.0-1.0).")
+            .additional_params(format_param)
             .build();
             
         let analysis = extractor

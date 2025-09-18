@@ -723,7 +723,7 @@ Answer: ",
         // Use the REAL Rig 0.19 implementation
         match &*self.llm_provider {
             LLMProvider::Ollama { url, model, .. } => {
-                // Use the extractor-based coordinator for structured output
+                // Use the extractor-based coordinator with JSON format for granite3.3
                 let coordinator = agents::ExtractorBasedCoordinator::new(url, model);
                 
                 // Get result from Rig coordinator
