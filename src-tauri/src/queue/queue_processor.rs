@@ -33,7 +33,7 @@ impl QueueProcessor {
         Self {
             queue,
             downloader,
-            limiter: SmartLimiter::new(),
+            limiter: SmartLimiter::with_limit(44), // 2x CPU cores for aggressive parallel processing
             progress_tx: None,
         }
     }
@@ -116,8 +116,8 @@ impl QueueProcessor {
                 }
                 
                 // Don't wait for all tasks to complete - let them run in background
-                // Wait longer before checking for new items to avoid re-spawning same items
-                sleep(Duration::from_millis(5000)).await;
+                // Shorter delay for faster responsiveness to new items
+                sleep(Duration::from_millis(2000)).await;
             } else {
                 // No pending items, sleep and check again
                 sleep(Duration::from_millis(1000)).await;
