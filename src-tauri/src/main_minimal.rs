@@ -1,0 +1,1 @@
+fn main() { println!("ClippyB - Music Clipboard Monitor"); println!("The full app has compilation issues that need to be fixed."); println!("Press Ctrl+C to exit."); loop { std::thread::sleep(std::time::Duration::from_secs(1)); } } 

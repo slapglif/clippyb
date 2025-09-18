@@ -1,0 +1,55 @@
+[package]
+name = "clippyb"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "clippyb"
+path = "src/main.rs"
+
+[dependencies]
+# Native Windows clipboard and system tray
+clipboard-win = "5.4"
+tray-icon = "0.21"
+winit = "0.30"
+image = "0.25"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify-rust = "4.11"
+
+# Music downloading and processing
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+regex = "1.11"
+url = "2.5"
+id3 = "1.14"
+mp3-metadata = "0.3"
+base64 = "0.22"
+uuid = { version = "1.11", features = ["v4"] }
+
+# Spotify and SoundCloud metadata extraction (native Rust)
+rspotify = { version = "0.15.1", features = ["client-reqwest", "reqwest-native-tls"] }
+soundcloud-rs = "0.8.0"
+
+# YouTube downloading (keep yt-dlp for downloading/conversion, use Rust for search)
+tokio-process = "0.2"
+which = "7.0"
+thiserror = "2.0"
+anyhow = "1.0"
+futures = "0.3"
+
+# File handling
+dirs = "5.0"
+walkdir = "2.5"
+tempfile = "3.14"
+
+# LLM Orchestration with Rig
+rig-core = "0.19"
+async-trait = "0.1"
+chrono = "0.4"
+schemars = "1.0"
+

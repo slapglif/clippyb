@@ -1,0 +1,299 @@
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+
+  color: #0f0f0f;
+  background-color: #f6f6f6;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+.container {
+  margin: 0;
+  padding: 20px;
+  text-align: left;
+  max-width: 100%;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #1a1a1a;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+}
+
+.controls button {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.controls button:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.input-section {
+  margin-bottom: 30px;
+}
+
+.url-input, .list-input {
+  margin-bottom: 20px;
+}
+
+.url-input h3, .list-input h3 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+}
+
+.input-group input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.list-input textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 100px;
+}
+
+button {
+  padding: 10px 20px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+button:hover {
+  background: #45a049;
+}
+
+button:active {
+  background: #3d8b40;
+}
+
+.progress-section {
+  background: #f9f9f9;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #e0e0e0;
+}
+
+.progress-info {
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: #333;
+}
+
+.current-song {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 20px;
+  background: #e0e0e0;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50 0%, #66BB6A 100%);
+  transition: width 0.3s ease;
+  border-radius: 10px;
+}
+
+.downloads-section {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.downloads-section h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.download-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.download-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  color: #555;
+  font-size: 14px;
+}
+
+.download-list li:last-child {
+  border-bottom: none;
+}
+
+.config-section {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.config-section h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.config-group {
+  margin-bottom: 15px;
+}
+
+.config-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+  color: #555;
+  font-size: 14px;
+}
+
+.config-group input,
+.config-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.folder-picker {
+  display: flex;
+  gap: 10px;
+}
+
+.folder-picker input {
+  flex: 1;
+}
+
+.config-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.config-actions button {
+  padding: 8px 20px;
+}
+
+.config-actions button:last-child {
+  background: #666;
+}
+
+.config-actions button:last-child:hover {
+  background: #555;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f6f6f6;
+    background-color: #2f2f2f;
+  }
+
+  .header {
+    border-bottom-color: #444;
+  }
+
+  .header h1 {
+    color: #f6f6f6;
+  }
+
+  .controls button {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #f6f6f6;
+  }
+
+  .controls button:hover {
+    background: #4a4a4a;
+    border-color: #666;
+  }
+
+  input, textarea, select {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #f6f6f6;
+  }
+
+  .progress-section,
+  .downloads-section,
+  .config-section {
+    background: #3a3a3a;
+    border-color: #555;
+  }
+
+  .progress-bar {
+    background: #555;
+  }
+
+  .download-list li {
+    border-bottom-color: #444;
+    color: #ccc;
+  }
+
+  .config-group label,
+  .downloads-section h3,
+  .url-input h3,
+  .list-input h3 {
+    color: #ddd;
+  }
+}
