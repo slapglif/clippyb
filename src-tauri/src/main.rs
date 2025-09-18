@@ -726,6 +726,11 @@ Answer: ",
                 // Use the extractor-based coordinator for structured output
                 let coordinator = agents::ExtractorBasedCoordinator::new(url, model);
                 
+                // Test connection before proceeding
+                if let Err(e) = coordinator.test_connection().await {
+                    return Err(MusicDownloadError::LLM(format!("Ollama connection failed: {}. Check if Ollama is running at {} and model {} is available", e, url, model)));
+                }
+                
                 // Get result from Rig coordinator
                 let agent_result = coordinator.search_for_song(song_query).await?;
                 

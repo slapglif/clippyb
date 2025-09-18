@@ -32,8 +32,8 @@ struct ResultAnalysis {
 }
 
 pub struct QueryExtractor {
-    client: ollama::Client,
-    model_name: String,
+    pub client: ollama::Client,
+    pub model_name: String,
 }
 
 impl QueryExtractor {
@@ -73,7 +73,7 @@ impl MusicSearchAgent for QueryExtractor {
         let result = extractor
             .extract(&input_text)
             .await
-            .map_err(|e| MusicDownloadError::LLM(format!("Extractor error: {}", e)))?;
+            .map_err(|e| MusicDownloadError::LLM(format!("Query extractor error: {} | Input: '{}' | Model: {}", e, input_text.chars().take(200).collect::<String>(), self.model_name)))?;
             
         Ok(SearchIteration {
             query: result.queries.join(" | "),
@@ -133,7 +133,7 @@ impl ResultExtractor {
         let analysis = extractor
             .extract(&input)
             .await
-            .map_err(|e| MusicDownloadError::LLM(format!("Analysis error: {}", e)))?;
+            .map_err(|e| MusicDownloadError::LLM(format!("Result analysis error: {} | Query: '{}' | {} results | Model: {}", e, original_query, results.len(), self.model_name)))?;
             
         let selected = if analysis.selected_result_index >= 0 
             && (analysis.selected_result_index as usize) < results.len() {

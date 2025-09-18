@@ -1,12 +1,14 @@
 // Rig 0.19 Coordinator with Proper Extractors
 use std::sync::Arc;
 use rig::providers::ollama;
+use rig::client::CompletionClient;
 
 use super::{
     SearchContext, SearchIteration, SearchResult, YouTubeSearchTool,
     rig_extractors::{QueryExtractor, ResultExtractor},
     MusicSearchAgent,
 };
+use async_trait::async_trait;
 use crate::MusicDownloadError;
 
 pub struct ExtractorBasedCoordinator {
@@ -18,6 +20,8 @@ pub struct ExtractorBasedCoordinator {
 
 impl ExtractorBasedCoordinator {
     pub fn new(ollama_url: &str, model: &str) -> Self {
+        println!("🔗 Creating Ollama client for URL: {} with model: {}", ollama_url, model);
+        
         let client = ollama::Client::builder()
             .base_url(ollama_url)
             .build()
@@ -29,6 +33,34 @@ impl ExtractorBasedCoordinator {
             youtube_tool: Arc::new(YouTubeSearchTool::new()),
             max_iterations: 3,
         }
+    }
+    
+    pub async fn test_connection(&self) -> Result<(), MusicDownloadError> {
+        println!("🔍 Testing Ollama connection...");
+        
+        // Create a simple extractor to test connectivity
+        use rig::extractor::ExtractorBuilder;
+        use schemars::JsonSchema;
+        use serde::{Deserialize, Serialize};
+        
+        #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+        struct TestResponse {
+            status: String,
+        }
+        
+        // Get the client and model from the query extractor
+        let test_extractor = self.query_extractor.client
+            .extractor::<TestResponse>(&self.query_extractor.model_name)
+            .preamble("Respond with a simple status.")
+            .build();
+            
+        let result = test_extractor
+            .extract("Test connectivity. Respond with status: 'ok'")
+            .await
+            .map_err(|e| MusicDownloadError::LLM(format!("Connection test failed: {}", e)))?;
+            
+        println!("✅ Ollama connection test successful: {}", result.status);
+        Ok(())
     }
     
     pub async fn search_for_song(&self, song_query: &str) -> Result<SearchResult, MusicDownloadError> {
