@@ -1530,7 +1530,8 @@ Extract the artist and song title from the video title, removing any extra text 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🎵 Starting ClippyB - AI-Powered Music Downloader");
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+    println!("🎵 Starting ClippyB v{} - AI-Powered Music Downloader", VERSION);
     
     let (downloader, mut download_rx) = MusicDownloader::new().await
         .map_err(|e| format!("Failed to initialize music downloader: {}", e))?;
@@ -1589,7 +1590,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create tray icon
     let _tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
-        .with_tooltip("🎵 ClippyB - AI Music Downloader")
+        .with_tooltip(&format!("🎵 ClippyB v{} - AI Music Downloader", VERSION))
         .with_icon(create_music_icon())
         .build()?;
     
