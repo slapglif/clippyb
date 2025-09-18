@@ -70,8 +70,8 @@ impl YouTubeSearchTool {
     pub async fn search_multiple(&self, queries: Vec<String>) -> Result<Vec<SearchResult>, MusicDownloadError> {
         use futures::future::join_all;
         
-        // Aggressive concurrent searches for maximum speed
-        let search_limit = 15; // Much higher limit - we have retry logic and queue to handle failures
+        // Balanced concurrent searches to avoid rate limiting and system lag
+        let search_limit = 8; // Reduced from 15 to prevent overwhelming system
         let limiter = SmartLimiter::with_limit(search_limit);
         
         println!("🚀 Starting {} YouTube searches with {} concurrent limit", queries.len(), search_limit);

@@ -23,9 +23,9 @@ impl RetryConfig {
     pub fn youtube_search() -> Self {
         Self {
             max_attempts: 3,
-            base_delay: Duration::from_millis(200), // Faster retry - was 500ms
-            max_delay: Duration::from_secs(5),      // Shorter max delay - was 10s  
-            backoff_multiplier: 1.5,                // Gentler backoff - was 2.0
+            base_delay: Duration::from_millis(500), // Balanced retry timing
+            max_delay: Duration::from_secs(8),      // Moderate max delay  
+            backoff_multiplier: 2.0,                // Standard backoff
         }
     }
     
