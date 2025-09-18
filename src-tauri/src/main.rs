@@ -258,11 +258,9 @@ impl MusicDownloader {
         println!("📁 No config found at: {:?}", config_path);
         println!("🔧 Using default configuration (Ollama)");
         
-        // Default to Ollama if no config found
-        LLMProvider::Ollama {
-            url: env::var("OLLAMA_URL").unwrap_or_else(|_| "http://98.87.166.97:11434".to_string()),
-            model: env::var("OLLAMA_MODEL").unwrap_or_else(|_| "granite3.3".to_string()),
-            num_context: Some(3200),
+        // Default to Gemini with provided API key
+        LLMProvider::Gemini {
+            api_key: "AIzaSyDepY_ZOJPQCmz62H8K23LB_TH2CVGyoT4".to_string(),
         }
     }
     
@@ -270,7 +268,7 @@ impl MusicDownloader {
         match config.provider.to_lowercase().as_str() {
             "ollama" => LLMProvider::Ollama {
                 url: config.url.unwrap_or_else(|| "http://98.87.166.97:11434".to_string()),
-                model: config.model.unwrap_or_else(|| "granite3.3".to_string()),
+                model: config.model.unwrap_or_else(|| "granite3.3:latest".to_string()),
                 num_context: config.num_context.or(Some(3200)),
             },
             "openai" => LLMProvider::OpenAI {
@@ -287,7 +285,7 @@ impl MusicDownloader {
                 println!("⚠️ Unknown provider '{}', defaulting to Ollama", config.provider);
                 LLMProvider::Ollama {
                     url: "http://98.87.166.97:11434".to_string(),
-                    model: "granite3.3".to_string(),
+                    model: "granite3.3:latest".to_string(),
                     num_context: Some(12000),
                 }
             }
@@ -355,8 +353,9 @@ impl MusicDownloader {
         let content = content.trim();
         println!("🔍 DEBUG: Content length: {}, first 100 chars: {}", content.len(), content.chars().take(100).collect::<String>());
         
-        // Check for Spotify URLs FIRST - handle Windows line endings
-        let spotify_pattern = Regex::new(r"(?i)(?:https?://)?(?:open\.)?spotify\.com/(?:track|album|playlist)/([a-zA-Z0-9]+)").unwrap();
+        // Check for Spotify URLs FIRST - handle both web URLs and URI format
+        let spotify_web_pattern = Regex::new(r"(?i)(?:https?://)?(?:open\.)?spotify\.com/(?:track|album|playlist)/([a-zA-Z0-9]+)").unwrap();
+        let spotify_uri_pattern = Regex::new(r"(?i)spotify:(?:track|album|playlist):([a-zA-Z0-9]+)").unwrap();
         
         // Split by any newline type (\n, \r\n, or \r)
         let lines: Vec<&str> = content.split(|c| c == '\n' || c == '\r')
@@ -365,9 +364,9 @@ impl MusicDownloader {
         
         println!("📋 DEBUG: Found {} non-empty lines after splitting", lines.len());
         
-        // Count Spotify URLs
+        // Count Spotify URLs (both web and URI formats)
         let spotify_urls: Vec<String> = lines.iter()
-            .filter(|line| spotify_pattern.is_match(line))
+            .filter(|line| spotify_web_pattern.is_match(line) || spotify_uri_pattern.is_match(line))
             .map(|line| line.trim().to_string())
             .collect();
         
@@ -504,6 +503,33 @@ impl MusicDownloader {
     
     async fn is_music_related(&self, content: &str) -> Result<bool, MusicDownloadError> {
         match &*self.llm_provider {
+            LLMProvider::Gemini { api_key } => {
+                let prompt = format!(
+                    "Is this text related to music, songs, artists, or albums? Answer with ONLY 'YES' or 'NO'.
+
+Text: '{}'
+
+Look for:
+- Song titles (like 'Bohemian Rhapsody' or 'Stairway to Heaven')
+- Artist names with songs (like 'Beatles - Hey Jude' or 'Taylor Swift Love Story')
+- Album names
+- Music-related lists
+- Anything that could be a music query
+
+DO NOT consider as music:
+- File paths, URLs, error messages
+- Programming code, configuration text
+- General conversation, instructions
+- Random text, clipboard artifacts
+
+Answer: ",
+                    content.chars().take(500).collect::<String>() // Limit content length
+                );
+
+                let response = self.call_gemini_api(api_key, &prompt).await?;
+                let response = response.trim().to_uppercase();
+                Ok(response.contains("YES"))
+            },
             LLMProvider::Ollama { url, model, .. } => {
                 use rig::{providers::ollama, client::CompletionClient, completion::Completion};
 
@@ -554,9 +580,57 @@ Answer: ",
                 let response = response_text.trim().to_uppercase();
                 Ok(response.contains("YES"))
             },
+            LLMProvider::Gemini { api_key } => {
+                use rig::{providers::gemini, client::CompletionClient, completion::Completion};
+                
+                let client = gemini::Client::new(api_key);
+                let agent = client.agent("gemini-2.5-flash-lite")
+                    .preamble("You are a music content classifier. Respond with ONLY 'YES' or 'NO'.")
+                    .build();
+
+                let prompt = format!(
+                    "Is this text related to music, songs, artists, or albums? Answer with ONLY 'YES' or 'NO'.
+
+Text: '{}'
+
+Look for:
+- Song titles (like 'Bohemian Rhapsody' or 'Stairway to Heaven')
+- Artist names with songs (like 'Beatles - Hey Jude' or 'Taylor Swift Love Story')
+- Album names
+- Music-related lists
+- Spotify URLs (like 'spotify:track:...')
+- YouTube music URLs
+- Anything that could be a music query
+
+DO NOT consider as music:
+- File paths, URLs (except music-specific ones), error messages
+- Programming code, configuration text
+- General conversation, instructions
+- Random text, clipboard artifacts
+
+Answer: ",
+                    content.chars().take(500).collect::<String>() // Limit content length
+                );
+
+                let response = agent.completion(&prompt, vec![])
+                    .await
+                    .map_err(|e| MusicDownloadError::LLM(format!("Rig error: {}", e)))?
+                    .send()
+                    .await
+                    .map_err(|e| MusicDownloadError::LLM(format!("Rig completion error: {}", e)))?;
+
+                // Extract text from OneOrMany<AssistantContent>
+                let response_text = match response.choice.into_iter().next() {
+                    Some(rig::completion::AssistantContent::Text(text)) => text.text,
+                    _ => return Ok(false), // If unexpected format, assume not music
+                };
+
+                let response = response_text.trim().to_uppercase();
+                Ok(response.contains("YES"))
+            },
             _ => {
-                eprintln!("Only Ollama provider supported for music classification");
-                Ok(false)
+                eprintln!("Provider not supported for music classification, defaulting to true");
+                Ok(true) // Default to true for other providers
             }
         }
     }
@@ -720,7 +794,7 @@ Answer: ",
     }
     
     async fn react_search_for_song(&self, song_query: &str) -> Result<SearchResult, MusicDownloadError> {
-        // Use the REAL Rig 0.19 implementation
+        // Use the appropriate coordinator based on LLM provider
         match &*self.llm_provider {
             LLMProvider::Ollama { url, model, .. } => {
                 // Use the extractor-based coordinator with JSON format for granite3.3
@@ -740,9 +814,27 @@ Answer: ",
                     url: agent_result.url,
                 })
             },
+            LLMProvider::Gemini { api_key } => {
+                // Use the direct Gemini implementation with exact model name
+                let coordinator = agents::GeminiDirectCoordinator::new(api_key, "gemini-2.5-flash-lite");
+                
+                // Get result from Gemini coordinator
+                let agent_result = coordinator.search_for_song(song_query).await?;
+                
+                // Convert back to our SearchResult type
+                Ok(SearchResult {
+                    id: agent_result.id,
+                    title: agent_result.title,
+                    uploader: agent_result.uploader,
+                    duration: agent_result.duration,
+                    view_count: agent_result.view_count,
+                    upload_date: agent_result.upload_date,
+                    url: agent_result.url,
+                })
+            },
             _ => {
-                // Only Ollama is supported with Rig for now
-                Err(MusicDownloadError::LLM("Only Ollama provider is supported with Rig integration".to_string()))
+                // Ollama and Gemini are supported with Rig for now
+                Err(MusicDownloadError::LLM("Only Ollama and Gemini providers are supported with Rig integration".to_string()))
             }
         }
     }
@@ -1281,7 +1373,7 @@ Extract the clean artist and song title, removing extra text like '[Official Vid
         
         let response = self.client
             .post(&format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={}",
                 api_key
             ))
             .json(&request)
@@ -1558,7 +1650,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   Model: {}", model);
         },
         LLMProvider::Gemini { .. } => {
-            println!("🤖 LLM Provider: Gemini 2.5 Flash");
+            println!("🤖 LLM Provider: Gemini 2.5 Flash Lite");
         },
         LLMProvider::Claude { .. } => {
             println!("🤖 LLM Provider: Claude 3 Haiku");

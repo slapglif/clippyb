@@ -14,6 +14,8 @@ pub mod rig_coordinator;
 pub mod rig_extractors;
 pub mod rig_coordinator_v2;
 pub mod simple_metadata_extractor;
+pub mod gemini_coordinator;
+pub mod gemini_direct;
 
 pub use youtube_search::YouTubeSearchTool;
 pub use rig_agents::{RigQueryGenerator, RigResultAnalyzer};
@@ -22,6 +24,8 @@ pub use pipeline_agents::MusicSearchPipeline;
 pub use rig_coordinator::RigMusicSearchCoordinator;
 pub use rig_extractors::{QueryExtractor, ResultExtractor};
 pub use rig_coordinator_v2::ExtractorBasedCoordinator;
+pub use gemini_coordinator::GeminiCoordinator;
+pub use gemini_direct::GeminiDirectCoordinator;
 
 use crate::MusicDownloadError;
 

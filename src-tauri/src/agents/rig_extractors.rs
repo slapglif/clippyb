@@ -65,23 +65,54 @@ impl MusicSearchAgent for QueryExtractor {
             format!("Find this song on YouTube: {}", context.original_query)
         };
         
-        // Create extractor with explicit JSON schema format for Ollama structured output
+        // Create extractor with Ollama JSON format parameter and schema
         use schemars::schema_for;
         let schema = schema_for!(QueryList);
         let format_param = serde_json::json!({
-            "format": serde_json::to_string(&schema).unwrap()
+            "format": schema
         });
+        
+        println!("🔍 DEBUG: About to call extractor.extract() with input: '{}'", input_text);
+        println!("🔍 DEBUG: Model: {}", self.model_name);
+        println!("🔍 DEBUG: Format param: {}", serde_json::to_string_pretty(&format_param).unwrap_or_default());
         
         let extractor = self.client
             .extractor::<QueryList>(&self.model_name)
-            .preamble("You are a music search expert. Generate effective YouTube search queries for the given song. Return a JSON object with a 'queries' array containing 2-3 search query strings.")
+            .preamble("You are a music search expert. Generate effective YouTube search queries for the given song. You MUST return valid JSON in exactly this format: {\"queries\": [\"query1\", \"query2\", \"query3\"]}. Include 2-3 search query strings.")
             .additional_params(format_param)
             .build();
-            
+        
+        // Let's panic to see the full stack trace
         let result = extractor
             .extract(&input_text)
-            .await
-            .map_err(|e| MusicDownloadError::LLM(format!("Query extractor error: {} | Input: '{}' | Model: {}", e, input_text.chars().take(200).collect::<String>(), self.model_name)))?;
+            .await;
+            
+        println!("🔍 DEBUG: Raw extractor result: {:?}", result);
+        
+        let result = match result {
+            Ok(data) => {
+                println!("🔍 DEBUG: SUCCESS - Got data: {:?}", data);
+                data
+            }
+            Err(e) => {
+                println!("🔍 DEBUG: ERROR - Full error details: {:#?}", e);
+                println!("🔍 DEBUG: ERROR - Error source chain:");
+                let mut current_error: &dyn std::error::Error = &e;
+                let mut level = 0;
+                loop {
+                    println!("🔍 DEBUG: ERROR [{}]: {}", level, current_error);
+                    match current_error.source() {
+                        Some(source) => {
+                            current_error = source;
+                            level += 1;
+                        }
+                        None => break,
+                    }
+                }
+                // PANIC to see full stack trace
+                panic!("DEBUGGING: Rig extractor failed with NoData error. Full error: {:#?}", e);
+            }
+        };
             
         Ok(SearchIteration {
             query: result.queries.join(" | "),
@@ -133,23 +164,33 @@ impl ResultExtractor {
             original_query, results_text
         );
         
-        // Create extractor with explicit JSON schema format for Ollama structured output  
+        // Create extractor with Ollama JSON format parameter and schema
         use schemars::schema_for;
         let schema = schema_for!(ResultAnalysis);
         let format_param = serde_json::json!({
-            "format": serde_json::to_string(&schema).unwrap()
+            "format": schema
         });
+        
+        println!("🔍 DEBUG: Result analysis - About to call extractor.extract() with input: '{}'", input);
+        println!("🔍 DEBUG: Result analysis - Model: {}", self.model_name);
+        println!("🔍 DEBUG: Result analysis - Format param: {}", serde_json::to_string_pretty(&format_param).unwrap_or_default());
         
         let extractor = self.client
             .extractor::<ResultAnalysis>(&self.model_name)
-            .preamble("You are a music search result analyzer. Select the best match for the requested song. Return a JSON object with query, reasoning, selected_result_index (number), and confidence (0.0-1.0).")
+            .preamble("You are a music search result analyzer. Select the best match for the requested song. You MUST return valid JSON in exactly this format: {\"query\": \"search query\", \"reasoning\": \"explanation\", \"selected_result_index\": 0, \"confidence\": 0.8}. Use -1 for selected_result_index if no good match.")
             .additional_params(format_param)
             .build();
-            
+        
         let analysis = extractor
             .extract(&input)
-            .await
-            .map_err(|e| MusicDownloadError::LLM(format!("Result analysis error: {} | Query: '{}' | {} results | Model: {}", e, original_query, results.len(), self.model_name)))?;
+            .await;
+            
+        println!("🔍 DEBUG: Result analysis - Raw extractor result: {:?}", analysis);
+        
+        let analysis = analysis.map_err(|e| {
+            println!("🔍 DEBUG: Result analysis - Full error details: {:#?}", e);
+            MusicDownloadError::LLM(format!("Result analysis error: {:#?} | Query: '{}' | {} results | Model: {}", e, original_query, results.len(), self.model_name))
+        })?;
             
         let selected = if analysis.selected_result_index >= 0 
             && (analysis.selected_result_index as usize) < results.len() {
