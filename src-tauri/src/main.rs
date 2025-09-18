@@ -660,55 +660,50 @@ Answer: ",
                 //     &format!("{} tracks queued for download", songs.len())
                 // );
                 
-                // Process songs with limited concurrency
-                use futures::stream::{self, StreamExt};
-                use crate::utils::rate_limiter::RateLimiter;
+                // Process all songs with maximum concurrency
+                use futures::future::join_all;
                 
-                // Limit to 5 concurrent downloads with 500ms delay between starts
-                let rate_limiter = Arc::new(RateLimiter::new(5, 500));
                 let total = songs.len();
                 let songs_for_processing = songs.clone();
                 let start_time = std::time::Instant::now();
                 
-                let results: Vec<_> = stream::iter(songs_for_processing.into_iter().enumerate())
-                    .map(move |(i, song)| {
-                        let self_clone = self.clone();
-                        let index = i + 1;
-                        let limiter = Arc::clone(&rate_limiter);
+                // Create tasks for ALL songs with NO rate limiting
+                let mut tasks = Vec::new();
+                for (i, song) in songs_for_processing.into_iter().enumerate() {
+                    let self_clone = self.clone();
+                    let index = i + 1;
+                    
+                    let task = tokio::spawn(async move {
+                        println!("🎵 Processing {}/{}: {}", index, total, song.chars().take(60).collect::<String>());
                         
-                        async move {
-                            // Rate limit
-                            let _permit = limiter.acquire().await.ok()?;
-                            
-                            println!("🎵 Processing {}/{}: {}", index, total, song.chars().take(60).collect::<String>());
-                            
-                            let result = if song.contains("spotify.com") {
-                                self_clone.process_spotify_url(&song).await
-                            } else if song.contains("soundcloud.com") {
-                                self_clone.process_soundcloud_url(&song).await
-                            } else {
-                                self_clone.process_song_name(&song).await
-                            };
-                            
-                            match &result {
-                                Ok(_) => println!("✅ Completed {}/{}", index, total),
-                                Err(e) => {
-                                    eprintln!("❌ Failed {}/{}: {}", index, total, e);
-                                    eprintln!("   🎵 Song: {}", song.chars().take(50).collect::<String>());
-                                    eprintln!("   📋 Error details: {}", e);
-                                },
-                            }
-                            
-                            Some(result)
+                        let result = if song.contains("spotify.com") {
+                            self_clone.process_spotify_url(&song).await
+                        } else if song.contains("soundcloud.com") {
+                            self_clone.process_soundcloud_url(&song).await
+                        } else {
+                            self_clone.process_song_name(&song).await
+                        };
+                        
+                        match &result {
+                            Ok(_) => println!("✅ Completed {}/{}", index, total),
+                            Err(e) => {
+                                eprintln!("❌ Failed {}/{}: {}", index, total, e);
+                                eprintln!("   🎵 Song: {}", song.chars().take(50).collect::<String>());
+                                eprintln!("   📋 Error details: {}", e);
+                            },
                         }
-                    })
-                    .buffer_unordered(5) // Process up to 5 at a time
-                    .collect()
-                    .await;
+                        
+                        result
+                    });
+                    tasks.push(task);
+                }
+                
+                // Wait for ALL tasks to complete concurrently
+                let results = join_all(tasks).await;
                 
                 // Count successes/failures
-                let successes = results.iter().flatten().filter(|r| r.is_ok()).count();
-                let failures = results.iter().flatten().filter(|r| r.is_err()).count();
+                let successes = results.iter().filter_map(|r| r.as_ref().ok()).filter(|r| r.is_ok()).count();
+                let failures = results.iter().filter_map(|r| r.as_ref().ok()).filter(|r| r.is_err()).count();
                 let duration = start_time.elapsed();
                 
                 println!("\n📊 Summary: {} succeeded, {} failed out of {} total", successes, failures, songs.len());
@@ -1755,7 +1750,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     thread::spawn(move || {
         loop {
             downloader_monitor.check_clipboard();
-            thread::sleep(Duration::from_millis(500));
+            thread::sleep(Duration::from_millis(100)); // Faster clipboard monitoring
         }
     });
     

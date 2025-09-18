@@ -222,7 +222,7 @@ impl DownloadQueue {
                         let _ = tx.send(task).await;
                     } else {
                         // No tasks, wait a bit
-                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                     }
                 }
             });

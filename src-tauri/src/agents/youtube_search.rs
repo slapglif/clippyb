@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use serde_json;
-use std::time::Duration;
 use tokio::process::Command as TokioCommand;
-use tokio::time::sleep;
 
 use super::SearchResult;
 use crate::MusicDownloadError;
