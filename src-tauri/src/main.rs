@@ -422,7 +422,11 @@ impl MusicDownloader {
                 "{", "}", "[", "]", "<", ">",
                 "num_ctx", "model", "config", "api",
                 "null", "undefined", "true", "false",
-                "::", "=>", "->>", "```"
+                "::", "=>", "->>", "```",
+                "│", "┌", "└", "├", "─", "║", "╔", "╚", "╠", "═",
+                "agent", "middleware", "architecture", "intelligent",
+                "system", "server", "client", "database", "network",
+                "implementation", "development", "framework", "library"
             ];
             
             for indicator in &non_music_indicators {
@@ -449,10 +453,37 @@ impl MusicDownloader {
                 }
             }
             
-            // Only send to LLM if it has music-like patterns OR is a simple phrase/list
-            if has_music_pattern || (content.lines().count() > 1 && content.lines().all(|l| l.len() < 100)) {
+            // Only send to LLM if it has clear music-like patterns
+            if has_music_pattern {
                 println!("🎵 Potential music content, will verify with LLM");
                 return MusicItemType::SongName(content.to_string());
+            }
+            
+            // For multi-line content, be much more strict
+            if content.lines().count() > 1 {
+                // Only consider as potential music if ALL lines look like song names
+                let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+                if lines.len() > 20 {
+                    println!("❌ Too many lines ({}) for a song list, likely not music", lines.len());
+                    return MusicItemType::Unknown;
+                }
+                
+                // Check if all lines could be song names (simple format check)
+                let all_song_like = lines.iter().all(|line| {
+                    let line = line.trim();
+                    // Must be reasonable length and format
+                    line.len() > 3 && line.len() < 80 
+                    && !line.contains("|") && !line.contains("│") 
+                    && !line.contains("─") && !line.contains("┌")
+                    && !line.contains("└") && !line.contains("├")
+                    && !line.starts_with("#") && !line.starts_with("//")
+                    && !line.contains("=") && !line.contains(":")
+                });
+                
+                if all_song_like {
+                    println!("🎵 Multi-line content looks like song list, will verify with LLM");
+                    return MusicItemType::SongName(content.to_string());
+                }
             }
         }
         
@@ -1593,6 +1624,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Event::AboutToWait => {
                 // Check for menu events
                 if let Ok(event) = menu_channel.try_recv() {
+                    println!("🖱️ Menu event received: '{}'", event.id.0);
                     match event.id.0.as_str() {
                         "Quit" => {
                             println!("👋 ClippyB shutting down...");
@@ -1692,7 +1724,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("📝 Config file opened: {:?}", config_path);
                             println!("💡 Edit the config and restart ClippyB to apply changes");
                         }
-                        _ => {}
+                        unknown => {
+                            println!("⚠️ Unknown menu event: '{}'", unknown);
+                        }
                     }
                 }
             }
