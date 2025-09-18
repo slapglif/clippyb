@@ -62,8 +62,8 @@ impl GeminiCoordinator {
             max_iterations: self.max_iterations,
         };
         
-        for iteration in 0..self.max_iterations {
-            println!("🤔 Iteration {}/{}", iteration + 1, self.max_iterations);
+        for iteration in 0..1 {
+            println!("🚀 DEPRECATED: Using old GeminiCoordinator - switch to GeminiDirectCoordinator for single-pass!");
             
             // Generate queries using Gemini
             let query_iteration = self.generate_queries(&context).await?;

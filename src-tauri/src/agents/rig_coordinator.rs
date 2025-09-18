@@ -43,8 +43,8 @@ impl RigMusicSearchCoordinator {
             max_iterations: self.max_iterations,
         };
         
-        for iteration in 0..self.max_iterations {
-            println!("🤔 ReAct Iteration {}/{}", iteration + 1, self.max_iterations);
+        for iteration in 0..1 {
+            println!("🚀 DEPRECATED: Using old RigMusicSearchCoordinator - switch to ExtractorBasedCoordinator for single-pass!");
             
             // Step 1: Generate search queries using Rig
             let query_iteration = self.query_generator.process(&context).await?;
