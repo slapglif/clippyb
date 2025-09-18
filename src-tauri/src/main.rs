@@ -774,6 +774,21 @@ Answer: ",
         let song_info = self.extract_song_info_from_spotify_url(spotify_url).await?;
         println!("🔍 Extracted from Spotify: {}", song_info);
         
+        // Early duplicate check - parse artist and title from song_info
+        if let Some((artist, title)) = self.parse_artist_title(&song_info) {
+            if FuzzyMatcher::song_exists(&artist, &title, &self.music_folder) {
+                println!("✅ Song already exists, skipping expensive search: {} - {}", artist, title);
+                // Create dummy metadata to indicate already exists - this will be caught in process_spotify_url
+                return Ok(SongMetadata {
+                    artist: artist,
+                    title: title,
+                    album: Some("Already Downloaded".to_string()),
+                    year: None,
+                    youtube_url: "".to_string(),
+                });
+            }
+        }
+        
         // Then use ReAct search to find the best YouTube match
         let search_result = self.react_search_for_song(&song_info).await?;
         
@@ -785,6 +800,21 @@ Answer: ",
         // First extract song info from SoundCloud URL
         let song_info = self.extract_song_info_from_soundcloud_url(soundcloud_url).await?;
         println!("🔍 Extracted from SoundCloud: {}", song_info);
+        
+        // Early duplicate check - parse artist and title from song_info
+        if let Some((artist, title)) = self.parse_artist_title(&song_info) {
+            if FuzzyMatcher::song_exists(&artist, &title, &self.music_folder) {
+                println!("✅ Song already exists, skipping expensive search: {} - {}", artist, title);
+                // Create dummy metadata to indicate already exists
+                return Ok(SongMetadata {
+                    artist: artist,
+                    title: title,
+                    album: Some("Already Downloaded".to_string()),
+                    year: None,
+                    youtube_url: "".to_string(),
+                });
+            }
+        }
         
         // Then use ReAct search to find the best YouTube match
         let search_result = self.react_search_for_song(&song_info).await?;
@@ -1492,11 +1522,15 @@ Extract the artist and song title from the video title, removing any extra text 
     }
     
     async fn download_and_tag_song(&self, metadata: SongMetadata) -> Result<(), MusicDownloadError> {
-        // Check if song already exists
+        // Check if this is the "Already Downloaded" marker from early duplicate detection
+        if metadata.album.as_ref() == Some(&"Already Downloaded".to_string()) && metadata.youtube_url.is_empty() {
+            println!("✅ Song already exists (early detection): {} - {}", metadata.artist, metadata.title);
+            return Ok(());
+        }
+        
+        // Fallback duplicate check for cases where early detection was bypassed
         if FuzzyMatcher::song_exists(&metadata.artist, &metadata.title, &self.music_folder) {
             println!("✅ Song already downloaded: {} - {}", metadata.artist, metadata.title);
-            // Don't notify for already downloaded
-            // self.show_notification("✅ Already downloaded", &format!("{} - {}", metadata.artist, metadata.title));
             return Ok(());
         }
         
@@ -1619,6 +1653,31 @@ Extract the artist and song title from the video title, removing any extra text 
             .map_err(|e| MusicDownloadError::Metadata(format!("Failed to write MP3 tags: {}", e)))?;
         
         Ok(())
+    }
+    
+    // Helper function to parse "Artist - Title" format
+    fn parse_artist_title(&self, song_info: &str) -> Option<(String, String)> {
+        // Try different separators commonly used
+        for separator in [" - ", " – ", " — ", ": ", " | "] {
+            if let Some(pos) = song_info.find(separator) {
+                let artist = song_info[..pos].trim().to_string();
+                let title = song_info[pos + separator.len()..].trim().to_string();
+                if !artist.is_empty() && !title.is_empty() {
+                    return Some((artist, title));
+                }
+            }
+        }
+        
+        // If no separator found, try to split on common patterns
+        let words: Vec<&str> = song_info.trim().split_whitespace().collect();
+        if words.len() >= 2 {
+            // Assume first word is artist, rest is title
+            let artist = words[0].to_string();
+            let title = words[1..].join(" ");
+            return Some((artist, title));
+        }
+        
+        None
     }
     
     fn get_history(&self) -> Vec<MusicItem> {
