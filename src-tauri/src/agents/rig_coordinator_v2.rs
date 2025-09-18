@@ -36,84 +36,57 @@ impl ExtractorBasedCoordinator {
     }
     
     pub async fn search_for_song(&self, song_query: &str) -> Result<SearchResult, MusicDownloadError> {
-        let mut context = SearchContext {
+        println!("🚀 Starting fast single-pass search for: {}", song_query);
+        
+        let context = SearchContext {
             original_query: song_query.to_string(),
             iterations: Vec::new(),
-            max_iterations: self.max_iterations,
+            max_iterations: 1,
         };
         
-        for iteration in 0..self.max_iterations {
-            println!("🤔 Iteration {}/{}", iteration + 1, self.max_iterations);
-            
-            // Generate queries using extractor
-            let query_iteration = self.query_extractor.process(&context).await?;
-            let queries: Vec<String> = query_iteration.query
-                .split(" | ")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            
-            if queries.is_empty() {
-                return Err(MusicDownloadError::LLM("No queries generated".to_string()));
-            }
-            
-            // Execute searches
-            println!("🔍 Searching with {} queries", queries.len());
-            let search_results = self.youtube_tool.search_multiple(queries.clone()).await?;
-            
-            if search_results.is_empty() {
-                context.iterations.push(SearchIteration {
-                    query: queries.join(", "),
-                    results: Vec::new(),
-                    reasoning: "No results found".to_string(),
-                    selected_result: None,
-                    confidence: 0.0,
-                });
-                continue;
-            }
-            
-            // Update context
-            context.iterations.push(SearchIteration {
+        // Generate queries using extractor
+        let query_iteration = self.query_extractor.process(&context).await?;
+        let queries: Vec<String> = query_iteration.query
+            .split(" | ")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        
+        if queries.is_empty() {
+            return Err(MusicDownloadError::LLM("No queries generated".to_string()));
+        }
+        
+        // Execute all searches concurrently
+        println!("🔍 Generated {} queries, searching YouTube concurrently", queries.len());
+        let search_results = self.youtube_tool.search_multiple(queries.clone()).await?;
+        
+        if search_results.is_empty() {
+            return Err(MusicDownloadError::Download("No search results found".to_string()));
+        }
+        
+        println!("📊 Found {} results, analyzing", search_results.len());
+        
+        // Create context for analysis
+        let mut analysis_context = SearchContext {
+            original_query: song_query.to_string(),
+            iterations: vec![SearchIteration {
                 query: queries.join(", "),
                 results: search_results.clone(),
                 reasoning: String::new(),
                 selected_result: None,
                 confidence: 0.0,
-            });
-            
-            // Analyze results using extractor
-            let analysis = self.result_extractor.process(&context).await?;
-            
-            println!("📝 Reasoning: {}", analysis.reasoning);
-            println!("🎯 Confidence: {:.1}%", analysis.confidence * 100.0);
-            
-            // Update iteration with analysis
-            if let Some(last) = context.iterations.last_mut() {
-                last.reasoning = analysis.reasoning.clone();
-                last.selected_result = analysis.selected_result.clone();
-                last.confidence = analysis.confidence;
-            }
-            
-            // Return if confident
-            if let Some(result) = &analysis.selected_result {
-                if analysis.confidence > 0.5 || iteration == self.max_iterations - 1 {
-                    println!("✅ Selected: {} by {}", result.title, result.uploader);
-                    return Ok(result.clone());
-                }
-            }
-        }
+            }],
+            max_iterations: 1,
+        };
         
-        // Return best result
-        context.iterations
-            .iter()
-            .filter_map(|iter| {
-                iter.selected_result.as_ref()
-                    .map(|result| (result.clone(), iter.confidence))
-            })
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .map(|(result, _)| result)
-            .ok_or_else(|| MusicDownloadError::Download(
-                format!("No suitable match found for: {}", song_query)
-            ))
+        // Analyze results using extractor
+        let analysis = self.result_extractor.process(&analysis_context).await?;
+        
+        if let Some(result) = analysis.selected_result {
+            println!("✅ Selected: {} by {}", result.title, result.uploader);
+            Ok(result)
+        } else {
+            Err(MusicDownloadError::Download(format!("No suitable match found for: {}", song_query)))
+        }
     }
 }
