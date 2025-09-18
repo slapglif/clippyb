@@ -1576,7 +1576,7 @@ Extract the artist and song title from the video title, removing any extra text 
             self.tag_mp3_file(&mp3_path, &metadata)?;
             
             println!("✅ Downloaded and tagged: {}", mp3_path.display());
-            self.show_notification("✅ Download Complete!", &format!("{} - {}", metadata.artist, metadata.title));
+            // No individual notifications - only log to console
         } else {
             return Err(MusicDownloadError::Download("Downloaded file not found".to_string()));
         }

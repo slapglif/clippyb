@@ -163,11 +163,12 @@ impl GeminiDirectCoordinator {
         // Execute all searches concurrently
         let search_results = self.youtube_tool.search_multiple(query_list.queries).await?;
         
-        if search_results.is_empty() {
-            return Err(MusicDownloadError::Download("No search results found".to_string()));
-        }
-        
         println!("📊 Found {} results, analyzing", search_results.len());
+        
+        if search_results.is_empty() {
+            println!("❌ No YouTube results found for: {}", song_query);
+            return Err(MusicDownloadError::Download(format!("No YouTube results found for: {}", song_query)));
+        }
         
         // Analyze results with Gemini
         let analysis = self.analyze_results(song_query, &search_results).await?;
@@ -176,7 +177,13 @@ impl GeminiDirectCoordinator {
             println!("✅ Selected: {} by {}", result.title, result.uploader);
             Ok(result)
         } else {
-            Err(MusicDownloadError::Download(format!("No suitable match found for: {}", song_query)))
+            // This should never happen due to fallback logic, but if it does, force pick first result
+            if !search_results.is_empty() {
+                println!("🔧 FORCE FALLBACK: Picking first result from {} available", search_results.len());
+                Ok(search_results[0].clone())
+            } else {
+                Err(MusicDownloadError::Download(format!("No suitable match found for: {}", song_query)))
+            }
         }
     }
     
@@ -258,7 +265,7 @@ impl GeminiDirectCoordinator {
         println!("🔍 DEBUG: Result analysis - About to call Gemini with input: '{}'", input);
         
         let prompt = format!(
-            "{}\n\nYou are a music search result analyzer. ALWAYS select the best available result from the list - never return -1.\n\nReturn ONLY valid JSON in exactly this format: {{\"query\": \"search query\", \"reasoning\": \"explanation\", \"selected_result_index\": 0, \"confidence\": 0.8}}. Pick the result that most closely matches the requested song, even if it's not perfect.",
+            "{}\n\nYou are a music search result analyzer. You MUST select a result from the list - index -1 is NOT allowed.\n\nCRITICAL: Always pick the result with the highest view count or most professional uploader if you're unsure. Even a partial match is better than no match.\n\nReturn ONLY valid JSON in exactly this format: {{\"query\": \"search query\", \"reasoning\": \"explanation\", \"selected_result_index\": 0, \"confidence\": 0.8}}. If confused, pick index 0.",
             input
         );
         
@@ -272,8 +279,14 @@ impl GeminiDirectCoordinator {
         let json_str = &response[json_start..json_end];
         
         // Parse JSON response
-        let analysis: ResultAnalysis = serde_json::from_str(json_str)
+        let mut analysis: ResultAnalysis = serde_json::from_str(json_str)
             .map_err(|e| MusicDownloadError::LLM(format!("Failed to parse analysis response: {} - Response: {}", e, response)))?;
+            
+        // FORCE: If Gemini still returns -1, override it to 0
+        if analysis.selected_result_index < 0 {
+            println!("🔧 FORCING: Gemini returned -1, overriding to 0");
+            analysis.selected_result_index = 0;
+        }
             
         let selected = if analysis.selected_result_index >= 0 
             && (analysis.selected_result_index as usize) < results.len() {
