@@ -675,20 +675,41 @@ Answer: ",
                         "song_name".to_string()
                     };
                     
-                    let queue_item = QueueItem::new(song.clone(), item_type)
-                        .with_metadata(queue::queue_item::QueueItemMetadata {
-                            title: None, // Will be populated during processing
-                            artist: None,
-                            playlist_name: Some(format!("Clipboard Batch {}", 
-                                SystemTime::now()
-                                    .duration_since(SystemTime::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs())),
-                            total_tracks: Some(songs.len()),
-                            track_index: Some(index + 1),
-                        });
+                    // Quick duplicate check before queueing
+                    let should_skip = if song.contains("spotify.com") || song.contains("soundcloud.com") {
+                        // For URLs, do a quick check but don't block on expensive API calls
+                        // The actual duplicate check will happen during processing
+                        false
+                    } else {
+                        // For song names, do immediate duplicate check
+                        if let Some((artist, title)) = self.parse_artist_title(song) {
+                            if crate::utils::fuzzy_match::FuzzyMatcher::song_exists(&artist, &title, &self.music_folder) {
+                                println!("⏭️ Skipping duplicate at queue time: {} - {}", artist, title);
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    };
                     
-                    queue_items.push(queue_item);
+                    if !should_skip {
+                        let queue_item = QueueItem::new(song.clone(), item_type)
+                            .with_metadata(queue::queue_item::QueueItemMetadata {
+                                title: None, // Will be populated during processing
+                                artist: None,
+                                playlist_name: Some(format!("Clipboard Batch {}", 
+                                    SystemTime::now()
+                                        .duration_since(SystemTime::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs())),
+                                total_tracks: Some(songs.len()),
+                                track_index: Some(index + 1),
+                            });
+                        
+                        queue_items.push(queue_item);
+                    }
                 }
                 
                 // Add all items to persistent queue
